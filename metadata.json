@@ -1,0 +1,6 @@
+{
+  "name": "OmniTutor Kids",
+  "description": "Aplikasi belajar cerdas bertema anak-anak yang penuh warna, seru, ceria, dan mudah digunakan!",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

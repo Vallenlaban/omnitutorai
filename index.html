@@ -1,0 +1,1332 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OmniTutor — Multimodal AI Study Companion (Track D)</title>
+    <meta
+      name="description"
+      content="OmniTutor - AI study companion yang menyatukan video kuliah, buku teks, dan slide ke dalam basis pengetahuan ber-sitasi dengan asesmen adaptif (Track D: Personalized Tutoring & Adaptive Learning)."
+    />
+    <meta property="og:title" content="OmniTutor — Multimodal AI Study Companion" />
+    <meta
+      property="og:description"
+      content="OmniTutor - AI study companion yang menyatukan video kuliah, buku teks, dan slide ke dalam basis pengetahuan ber-sitasi dengan asesmen adaptif."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google Fonts: Fredoka & Nunito (Super Ceria, Membulat, Khas Anak-Anak) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700;800&family=Nunito:wght@700;800;900;1000&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/src/styles/main.css" />
+
+    <!-- Real Multimodal Client Parsers: Local Same-Origin PDF.js & Worker for 100% Reliable Rendering -->
+    <script src="/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+      } else {
+        // Fallback CDN jika file lokal belum termuat
+        const cdnScript = document.createElement('script');
+        cdnScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        cdnScript.onload = () => {
+          if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+          }
+        };
+        document.head.appendChild(cdnScript);
+      }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- KaTeX: Tipografi Rumus Matematika, Vektor, Matriks & Sains (Track D STEM Formulations) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  </head>
+  <body>
+    <div class="app-playground">
+      <!-- =====================================================================
+           1. SIDEBAR KIRI: NAVIGASI WORKSPACE TRACK D
+           ===================================================================== -->
+      <aside class="kids-sidebar" aria-label="Menu Navigasi OmniTutor">
+        <div>
+          <!-- Logo Brand Akademik -->
+          <div class="kids-brand">
+            <div class="mascot-logo-icon">🎓</div>
+            <div class="brand-title-wrap">
+              <h1>Omni<span>Tutor</span></h1>
+              <span class="brand-sub" data-i18n="app_subtitle">AI Study Companion</span>
+            </div>
+          </div>
+
+          <!-- Menu Navigasi Mode Mahasiswa -->
+          <!-- Menu Navigasi Mode Mahasiswa -->
+          <ul class="kids-nav-list" id="studentNavMenu">
+            <li>
+              <button class="kids-nav-btn active" id="nav-btn-learn" type="button" onclick="switchMainView('learn')">
+                <span class="icon">📚</span>
+                <span data-i18n="nav_learn">Learn</span>
+              </button>
+            </li>
+            <li>
+              <button class="kids-nav-btn" id="nav-btn-aitutor" type="button" onclick="switchMainView('aitutor')">
+                <span class="icon">🤖</span>
+                <span data-i18n="nav_aitutor">AI Tutor</span>
+              </button>
+            </li>
+            <li>
+              <button class="kids-nav-btn" id="nav-btn-practice" type="button" onclick="switchMainView('practice')">
+                <span class="icon">📝</span>
+                <span data-i18n="nav_practice">Practice</span>
+              </button>
+            </li>
+            <li>
+              <button class="kids-nav-btn" id="nav-btn-progress" type="button" onclick="switchMainView('progress')">
+                <span class="icon">📊</span>
+                <span data-i18n="nav_progress">Progress</span>
+              </button>
+            </li>
+          </ul>
+
+          <!-- Menu Navigasi Mode Dosen (Hanya muncul saat di Mode Dosen) -->
+          <ul class="kids-nav-list" id="lecturerNavMenu" style="display: none;">
+            <li>
+              <button class="kids-nav-btn active" id="nav-btn-lecturer" type="button" onclick="switchMainView('lecturer')" style="background: #f5f3ff; border: 2px solid #ddd6fe; color: #4338ca;">
+                <span class="icon">📂</span>
+                <span data-i18n="nav_ingestion">Ingestion Hub</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Bagian Bawah Sidebar: Tombol Ganti Bahasa & Alih Peran -->
+        <div style="width: 100%; margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <!-- TOMBOL GANTI BAHASA: USA 🇺🇸 -> INDIA 🇮🇳 -> INDONESIA 🇮🇩 -->
+          <button type="button" class="kids-nav-btn" id="sidebarLangToggleBtn" onclick="toggleLanguage()" title="Switch Language: USA (EN) 🇺🇸 → India (HI) 🇮🇳 → Indonesia (ID) 🇮🇩" style="width: 100%; display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 2px solid #e2e8f0; color: #1e293b; font-weight: 800; padding: 10px 12px; border-radius: 16px; box-shadow: 0 3px 0 #cbd5e1; transition: all 0.15s ease; cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap;">
+              <span id="langFlagIcon" style="font-size: 1.45rem; line-height: 1; display: inline-flex; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));">🇺🇸</span>
+              <div style="display: flex; flex-direction: column; text-align: left; line-height: 1.15; overflow: hidden;">
+                <span id="langSwitchText" style="font-size: 0.84rem; font-family: var(--font-kids); font-weight: 800; color: #1e293b; text-overflow: ellipsis; overflow: hidden;">English (US)</span>
+                <span id="langSwitchSub" style="font-size: 0.65rem; color: #64748b; font-weight: 600;">United States</span>
+              </div>
+            </div>
+            <span id="langBadgeCode" style="font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: #f8fafc; color: #475569; border: 1.5px solid #cbd5e1; font-family: monospace; letter-spacing: 0.5px;">USA</span>
+          </button>
+
+          <!-- Tombol Alih Peran di Bagian Bawah Sidebar -->
+          <button type="button" class="kids-nav-btn" id="sidebarRoleToggleBtn" onclick="toggleRoleMode()" style="width: 100%; justify-content: center; background: #eef2ff; border: 2px solid #c7d2fe; color: #3730a3; font-weight: 800; padding: 12px 10px; border-radius: 16px;">
+            <span class="icon" id="roleSwitchIcon">👨‍🏫</span>
+            <span id="roleSwitchText">Mode Dosen</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- =====================================================================
+           2. AREA TENGAH: PETA PULAU PETUALANGAN BELAJAR (ZIG-ZAG SERU)
+           ===================================================================== -->
+      <main class="kids-main-stream" id="view-learn">
+        <!-- STATUS BAR ATAS (BINTANG, HATI, API STREAK) -->
+        <div class="kids-top-stats">
+          <div class="stat-pill stat-course" title="Mata Kuliah Seru">
+            <span>🧬</span>
+            <strong>Biologi 101</strong>
+          </div>
+
+          <div class="stat-pill stat-streak" title="7 Hari Berturut-turut!">
+            <span>🔥</span>
+            <span>7 Hari</span>
+          </div>
+
+          <div class="stat-pill stat-stars" title="Koleksi Bintang Emas">
+            <span>⭐</span>
+            <span>480</span>
+          </div>
+
+          <div class="stat-pill stat-hearts" title="Energi Semangat">
+            <span>💖</span>
+            <span>5 Penuh</span>
+          </div>
+        </div>
+
+        <!-- ===================================================================
+             1. PERSONALIZED LEARNING COCKPIT: HERO ADAPTIVE RECOMMENDATION
+             =================================================================== -->
+        <div class="cockpit-recommend-card">
+          <div class="cockpit-badge-row">
+            <span class="cockpit-tag">⚠️ Rekomendasi Adaptif Hari Ini</span>
+            <span class="cockpit-pct-badge">Respirasi Sel: 42% (Perlu Penguatan)</span>
+          </div>
+          <h2 class="cockpit-title">Perkuat Respirasi Sel Sebelum Masuk ke Fotosintesis!</h2>
+          <p class="cockpit-desc">
+            Sistem mendeteksi pemahamanmu di topik ini 42%. Luangkan 8 menit untuk review <strong>Video Kuliah Dosen (Menit 14:20)</strong> dan <strong>Buku Campbell Hal. 45</strong> sebelum membuka materi Fotosintesis.
+          </p>
+          <div class="cockpit-actions-line">
+            <button class="jelly-btn-3d btn-yellow" type="button" onclick="openRemedialLauncher()">
+              <span>🚀 Mulai Review Kilat (8 Min)</span>
+            </button>
+            <button class="jelly-btn-3d btn-white" type="button" onclick="openSourceDirect('video', 'Menit 14:20', 'Video Kuliah 02: Siklus Krebs & Rantai Transpor Elektron')">
+              <span>🎥 Klip Dosen (14:20)</span>
+            </button>
+            <button class="jelly-btn-3d btn-white" type="button" onclick="openSourceDirect('pdf', 'Halaman 45', 'Campbell Biology: Bab 9 Respirasi Selular')">
+              <span>📄 Buku Hal. 45</span>
+            </button>
+            <button class="jelly-btn-3d btn-blue" type="button" onclick="switchMainView('aitutor')">
+              <span>🤖 Tanya AI Tutor</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ===================================================================
+             2. ADAPTIVE CONCEPT PATHWAY (STEPPING STONES DENGAN LOGIKA AKADEMIS)
+             =================================================================== -->
+
+        <!-- UNIT 1: DASAR SELULER (STATUS: SELESAI ⭐) -->
+        <div class="kids-world-banner world-green">
+          <div class="world-text-wrap">
+            <span class="world-badge-tag">Unit 1 · Selesai ⭐</span>
+            <h2 class="world-title">Dasar Seluler</h2>
+            <p class="world-desc">Struktur organel & membran sel (Telah dikuasai dengan sangat baik!)</p>
+          </div>
+          <button class="btn-play-guide" type="button" onclick="openKidModal('📖 Rangkuman Unit 1', 'Materi dasar sel dari Campbell Biology Bab 6 & 7.', '91% Rata-rata')">
+            <span>📖</span>
+            <span>Rangkuman</span>
+          </button>
+        </div>
+
+        <!-- Topik Materi Unit 1 (Pengganti Bola-Bola Level) -->
+        <div class="unit-topics-container">
+          <!-- Topik 1: Cell Structure -->
+          <div class="topic-cockpit-card">
+            <div class="topic-card-left">
+              <div class="topic-status-icon-box status-box-done">⭐</div>
+              <div class="topic-card-info">
+                <div class="topic-card-header">
+                  <h3 class="topic-title">Cell Structure</h3>
+                  <span class="topic-mastery-tag tag-done">91% Mastery · Mahir ⭐</span>
+                </div>
+                <div class="topic-sources-sub">
+                  <span>📄 Campbell Hal. 12</span>
+                  <span>🎥 Video 01 (Menit 08:15)</span>
+                </div>
+                <div class="topic-progress-mini">
+                  <div class="topic-progress-mini-fill" style="width: 91%; background: var(--kid-green);"></div>
+                </div>
+              </div>
+            </div>
+            <div class="topic-card-actions">
+              <button class="jelly-btn-3d btn-white" style="padding: 9px 16px; font-size: 0.92rem;" type="button" onclick="openConceptModal('Cell Structure', '91% (Mahir ⭐)', 'Campbell Hal. 12 & Video 01', 'Struktur inti sel, ribosom, dan mitokondria sudah Anda kuasai dengan sangat matang!')">
+                Review ✨
+              </button>
+            </div>
+          </div>
+
+          <!-- Topik 2: Cell Membrane -->
+          <div class="topic-cockpit-card">
+            <div class="topic-card-left">
+              <div class="topic-status-icon-box status-box-done">⭐</div>
+              <div class="topic-card-info">
+                <div class="topic-card-header">
+                  <h3 class="topic-title">Cell Membrane</h3>
+                  <span class="topic-mastery-tag tag-done">81% Mastery · Mahir ⭐</span>
+                </div>
+                <div class="topic-sources-sub">
+                  <span>📄 Campbell Hal. 28</span>
+                  <span>🎥 Video 02 (Menit 05:40)</span>
+                </div>
+                <div class="topic-progress-mini">
+                  <div class="topic-progress-mini-fill" style="width: 81%; background: var(--kid-green);"></div>
+                </div>
+              </div>
+            </div>
+            <div class="topic-card-actions">
+              <button class="jelly-btn-3d btn-white" style="padding: 9px 16px; font-size: 0.92rem;" type="button" onclick="openConceptModal('Cell Membrane', '81% (Mahir ⭐)', 'Campbell Hal. 28 & Video 02', 'Model mozaik fluida dan transport pasif/aktif telah tuntas dipelajari.')">
+                Review ✨
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- UNIT 2: TRANSFORMASI ENERGI SEL (STATUS: SEDANG AKTIF ⚡) -->
+        <div class="kids-world-banner world-blue">
+          <div class="world-text-wrap">
+            <span class="world-badge-tag">Unit 2 · Sedang Dipelajari ⚡</span>
+            <h2 class="world-title">Transformasi Energi Sel</h2>
+            <p class="world-desc">Respirasi Seluler & Fotosintesis (Kuasai prasyarat untuk membuka level)</p>
+          </div>
+          <button class="btn-play-guide" type="button" onclick="openKidModal('📖 Panduan Unit 2', 'Silabus Bab 8 & 9 tentang metabolisme energi.', '65% Target')">
+            <span>📖</span>
+            <span>Rangkuman</span>
+          </button>
+        </div>
+
+        <!-- Topik Materi Unit 2 (Pengganti Bola-Bola Level) -->
+        <div class="unit-topics-container">
+          <!-- Topik 3: Cellular Respiration (REMEDIAL BRANCH - 42% MASTERY) -->
+          <div class="topic-cockpit-card card-remedial">
+            <div class="topic-card-left">
+              <div class="topic-status-icon-box status-box-remedial">⚠️</div>
+              <div class="topic-card-info">
+                <div class="topic-card-header">
+                  <h3 class="topic-title">Respirasi Sel (Cellular Respiration)</h3>
+                  <span class="topic-mastery-tag tag-remedial">42% Mastery · Butuh Remedial ⚠️</span>
+                </div>
+                <div class="topic-sources-sub">
+                  <span>📄 Campbell Hal. 45</span>
+                  <span>🎥 Video Kuliah 02 (14:20)</span>
+                  <span style="color: #c2410c; font-weight: 800;">Target Buka Lanjutan: ≥ 70%</span>
+                </div>
+                <div class="topic-progress-mini">
+                  <div class="topic-progress-mini-fill" style="width: 42%; background: var(--kid-orange);"></div>
+                </div>
+              </div>
+            </div>
+            <div class="topic-card-actions">
+              <button class="jelly-btn-3d btn-yellow" style="padding: 10px 18px; font-size: 0.95rem;" type="button" onclick="openRemedialLauncher()">
+                Remedial (8 Min) ⚡
+              </button>
+            </div>
+          </div>
+
+          <!-- Topik 4: Photosynthesis (ADAPTIVE PREREQUISITE LOCKED) -->
+          <div class="topic-cockpit-card card-locked">
+            <div class="topic-card-left">
+              <div class="topic-status-icon-box status-box-locked">🔒</div>
+              <div class="topic-card-info">
+                <div class="topic-card-header">
+                  <h3 class="topic-title">Fotosintesis (Photosynthesis)</h3>
+                  <span class="topic-mastery-tag tag-locked">Terkunci 🔒 (Prasyarat)</span>
+                </div>
+                <div class="topic-sources-sub">
+                  <span>Prasyarat: Kuatkan Respirasi Sel hingga ≥ 70% untuk membuka materi</span>
+                </div>
+                <div class="topic-progress-mini">
+                  <div class="topic-progress-mini-fill" style="width: 0%; background: #94a3b8;"></div>
+                </div>
+              </div>
+            </div>
+            <div class="topic-card-actions">
+              <button class="jelly-btn-3d btn-white" style="padding: 9px 16px; font-size: 0.92rem;" type="button" onclick="openLockedModal('Fotosintesis', 'Respirasi Sel', 70)">
+                Lihat Syarat 🔒
+              </button>
+            </div>
+          </div>
+
+          <!-- Topik 5: Ujian Bab 2 -->
+          <div class="topic-cockpit-card card-locked">
+            <div class="topic-card-left">
+              <div class="topic-status-icon-box status-box-locked">👑</div>
+              <div class="topic-card-info">
+                <div class="topic-card-header">
+                  <h3 class="topic-title">Ujian Komprehensif Bab 2</h3>
+                  <span class="topic-mastery-tag tag-locked">Terkunci 🔒</span>
+                </div>
+                <div class="topic-sources-sub">
+                  <span>Syarat: Selesaikan materi Respirasi Sel dan Fotosintesis</span>
+                </div>
+              </div>
+            </div>
+            <div class="topic-card-actions">
+              <button class="jelly-btn-3d btn-white" style="padding: 9px 16px; font-size: 0.92rem;" type="button" onclick="openKidModal('👑 Ujian Mahkota Bab 2', 'Ujian komprehensif energi sel. Terbuka setelah Fotosintesis dan Respirasi tuntas.', 'Syarat: 2 Topik Selesai')">
+                Detail Ujian
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- =====================================================================
+           3. KOLOM KANAN: MASKOT CERIA, MISI BINTANG & LEARNER MODEL BKT
+           ===================================================================== -->
+      <aside class="kids-right-rail" id="learn-right-rail" aria-label="Teman & Misi Harian">
+        <!-- Sahabat Maskot Lucu -->
+        <div class="mascot-friendly-box">
+          <div class="mascot-big-emoji">🦄</div>
+          <div class="mascot-talk-bubble">
+            "Halo Rekan Mahasiswa! Kuatkan dulu Respirasi Sel (42%), lalu gerbang Fotosintesis akan otomatis terbuka lebar! 🚀"
+          </div>
+        </div>
+
+        <!-- Misi Bintang Hari Ini ⭐ -->
+        <div class="rail-card-kids">
+          <div class="quest-header-title">
+            <span>Misi Bintang Hari Ini ⭐</span>
+          </div>
+
+          <div class="mission-row">
+            <span class="mission-badge-icon">⏱️</span>
+            <div class="mission-info-box">
+              <div class="mission-name">Review Respirasi Sel (8 Min)</div>
+              <div class="mission-progress-bar">
+                <div class="mission-fill" style="width: 45%; background: var(--kid-orange);"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mission-row">
+            <span class="mission-badge-icon">🎯</span>
+            <div class="mission-info-box">
+              <div class="mission-name">3 Soal Siklus Krebs</div>
+              <div class="mission-progress-bar">
+                <div class="mission-fill" style="width: 33%; background: var(--kid-blue);"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mission-row">
+            <span class="mission-badge-icon">🔥</span>
+            <div class="mission-info-box">
+              <div class="mission-name">Pertahankan 7 Hari Streak</div>
+              <div class="mission-progress-bar">
+                <div class="mission-fill" style="width: 100%; background: var(--kid-green);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STATUS PENGUASAAN KOGNITIF (LEARNER MODEL BKT / IRT ENGINE) -->
+        <div class="rail-card-kids">
+          <div class="quest-header-title">
+            <span>Status Penguasaan (BKT) 🧠</span>
+          </div>
+
+          <div id="railBktMasteryList" style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <div style="display: flex; justify-content: space-between; font-family: var(--font-kids); font-weight: 700; font-size: 0.88rem; margin-bottom: 4px;">
+                <span>Topic 1</span>
+                <span id="railMasteryText1" style="color: var(--kid-green);">91% (Mahir ⭐)</span>
+              </div>
+              <div class="mission-progress-bar">
+                <div class="mission-fill" id="railMasteryFill1" style="width: 91%; background: var(--kid-green);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Latihan Penguatan Cepat -->
+        <div class="super-remedial-box">
+          <div style="font-family: var(--font-kids); font-weight: 800; color: #ff6484; font-size: 0.9rem;">
+            REMEDIAL TARGET 🎈
+          </div>
+          <h4 id="railRemedialTitle" style="font-family: var(--font-kids); font-size: 1.15rem; font-weight: 800; color: var(--text-dark);">
+            Respirasi Sel (42% Paham)
+          </h4>
+          <p style="font-size: 0.85rem; font-weight: 700; color: #64748b;">
+            Kuis kilat 3 soal untuk memperkuat Siklus Krebs dan mencapai target 70%!
+          </p>
+          <button class="jelly-btn-3d btn-pink" type="button" onclick="openRemedialLauncher()">
+            Mulai Remedial Kilat →
+          </button>
+        </div>
+      </aside>
+
+      <!-- =====================================================================
+           HALAMAN KHUSUS: 🤖 AI TUTOR (SPLIT-SCREEN INTERACTIVE CHAT & MULTIMODAL EVIDENCE)
+           ===================================================================== -->
+      <main class="kids-ai-tutor-view" id="view-ai-tutor" style="display: none;">
+        <!-- Top Bar Header AI Tutor -->
+        <div class="tutor-page-header">
+          <div class="tutor-header-title-box">
+            <div class="tutor-header-avatar">🤖</div>
+            <div class="tutor-header-text">
+              <h2>OmniTutor AI Companion</h2>
+              <p id="tutorCourseActiveSubtitle">Standby: Terhubung dengan Berkas Resmi Mode Dosen</p>
+            </div>
+          </div>
+          <div class="tutor-header-badges">
+            <span class="guardrail-shield-pill">
+              <span>🛡️ Guardrail Aktif: Tolak Halusinasi</span>
+            </span>
+            <span style="font-family: var(--font-kids); font-size: 0.82rem; font-weight: 800; background: #e0f2fe; color: #0284c7; padding: 4px 12px; border-radius: 14px; border: 2px solid #bae6fd;">
+              RAGAS Faithfulness: 98.4%
+            </span>
+            <button class="jelly-btn-3d btn-white" style="padding: 6px 14px; font-size: 0.85rem;" type="button" onclick="switchMainView('learn')">
+              ← Kembali ke Learn
+            </button>
+          </div>
+        </div>
+
+        <!-- Split-Screen Grid: Chat di Kiri & Evidence Viewer di Kanan -->
+        <div class="tutor-split-grid">
+          
+          <!-- Kolom Kiri: Chat Room -->
+          <div class="tutor-chat-card">
+            <!-- Stream Obrolan -->
+            <div class="chat-dialogue-stream" id="chatDialogueStream">
+              <!-- Empty state awal saat pengguna baru membuka AI Tutor -->
+              <div class="msg-row" id="tutorWelcomeRow">
+                <div class="msg-avatar ai">🤖</div>
+                <div class="msg-bubble ai" id="tutorWelcomeBubble">
+                  Halo! Aku <strong>OmniTutor AI</strong>, asisten belajar pintarmu.<br><br>
+                  Tanyakan konsep apa saja seputar materi kuliah yang telah diunggah oleh dosen pengampu di <strong>Mode Dosen</strong>. Semua penjelasanku <strong>pasti disertai rujukan slide kuliah, halaman buku PDF, atau rekaman video</strong> yang langsung terbuka di panel sebelah kanan! 💡
+                  <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                    <button class="btn-tts-listen" type="button" title="Dengarkan Suara" aria-label="Dengarkan Suara" onclick="speakTutorResponse(this, 'Halo! Aku OmniTutor AI, asisten belajar pintarmu. Tanyakan konsep apa saja seputar materi kuliah yang telah diunggah oleh dosen pengampu di Mode Dosen. Semua penjelasanku pasti disertai rujukan slide kuliah, halaman buku PDF, atau rekaman video yang langsung terbuka di panel sebelah kanan!')">🔊</button>
+                    <button class="btn-copy-answer" type="button" title="Salin Jawaban" aria-label="Salin Jawaban" onclick="copyTutorResponse(this)">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bagian Bawah: Input Bar Alami (Tanpa Tombol Dummy) -->
+            <div class="chat-bottom-control">
+              <div class="chat-input-bar">
+                <textarea
+                  id="tutorChatInput"
+                  class="chat-input-element"
+                  rows="1"
+                  placeholder="Ketik pertanyaanmu seputar materi kuliah"
+                  onkeydown="handleTutorChatKeydown(event)"
+                  oninput="autoResizeTutorInput(this)"
+                ></textarea>
+                <button class="jelly-btn-3d btn-blue" id="btnSendTutorChat" type="button" onclick="sendTutorMessage()">
+                  <span>Kirim 🚀</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kolom Kanan: Multimodal Evidence Viewer Standby (Slide, PDF & Video) -->
+          <div class="tutor-evidence-card">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-family: var(--font-kids); font-weight: 800; font-size: 1.05rem; color: var(--kid-blue);">
+                🔍 Bukti Sumber Terverifikasi
+              </span>
+              <span id="evidenceSyncStatusBadge" style="font-size: 0.78rem; font-weight: 800; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 8px;">
+                Standby
+              </span>
+            </div>
+
+            <!-- Tab Switcher (Slide, PDF, Video) -->
+            <div class="evidence-nav-tabs" id="evidenceNavTabsBar">
+              <button class="evidence-tab-btn active" id="tabBtnSlide" type="button" onclick="setEvidenceTab('slide')">
+                <span>🖥️ Slide Kuliah</span>
+              </button>
+              <button class="evidence-tab-btn" id="tabBtnPdf" type="button" onclick="setEvidenceTab('pdf')">
+                <span>📄 Dokumen PDF</span>
+              </button>
+              <button class="evidence-tab-btn" id="tabBtnVideo" type="button" onclick="setEvidenceTab('video')">
+                <span>🎥 Rekaman Video</span>
+              </button>
+            </div>
+
+            <!-- Display 1: Slide Presentasi Viewer (Standby) -->
+            <div id="viewerSlideSection">
+              <div class="slide-preview-box">
+                <div class="slide-canvas-mock">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="slide-badge-pill" id="slideNumberBadge">🖥️ Slide Standby</span>
+                    <span style="font-size: 0.72rem; color: #94a3b8;" id="slideDocTitle">Materi Slide Kuliah</span>
+                  </div>
+                  <div style="margin: 12px 0;">
+                    <div style="font-family: var(--font-kids); font-size: 1.1rem; font-weight: 800; color: #38bdf8;" id="slideMainTopicTitle">
+                      Standby: Slide Kuliah
+                    </div>
+                    <div style="font-size: 0.82rem; color: #cbd5e1; margin-top: 6px; line-height: 1.4;" id="slideKeyBullets">
+                      Menunggu pemilihan rujukan slide dari jawaban AI Tutor atau berkas slide dosen yang diunggah.
+                    </div>
+                  </div>
+                  <div style="font-size: 0.72rem; color: #64748b; text-align: right;">
+                    OCR &amp; Diagram Extractor Standby
+                  </div>
+                </div>
+
+                <!-- Kontrol Navigasi Slide Kuliah -->
+                <div id="slideControlsBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1.5px dashed #e2e8f0;">
+                  <button class="jelly-btn-3d btn-white" id="btnSlidePrev" style="padding: 5px 16px; font-size: 0.85rem; font-weight: 800; border-radius: 20px; opacity: 0.5; cursor: not-allowed;" type="button" onclick="navigateSlidePage(-1)" title="Slide Sebelumnya" disabled>
+                    ◀
+                  </button>
+                  <span id="slideCurrentIndicator" style="font-size: 0.88rem; color: #475569; font-weight: 800; letter-spacing: 0.5px;">-/-</span>
+                  <button class="jelly-btn-3d btn-white" id="btnSlideNext" style="padding: 5px 16px; font-size: 0.85rem; font-weight: 800; border-radius: 20px; opacity: 0.5; cursor: not-allowed;" type="button" onclick="navigateSlidePage(1)" title="Slide Selanjutnya" disabled>
+                    ▶
+                  </button>
+                </div>
+
+                <!-- Diagram / Gambar Ekstraksi Slide -->
+                <div id="slideDiagramCard" style="background: #f8fafc; border: 2px dashed #93c5fd; border-radius: 14px; padding: 12px; text-align: center;">
+                  <div style="font-size: 0.75rem; font-weight: 800; color: #0284c7; margin-bottom: 4px;">
+                    🖼️ Visualisasi / Diagram:
+                  </div>
+                  <div id="slideDiagramDescription" style="font-size: 0.82rem; color: #64748b; font-style: italic;">
+                    Diagram atau gambar visual dari slide kuliah akan ditampilkan di sini.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Display 2: PDF Document Viewer (Active & Grounded) -->
+            <div id="viewerPdfSection" style="display: none;">
+              <div class="pdf-preview-box">
+                <!-- Multi-PDF Document Selector Bar (Menampilkan pilihan berkas PDF) -->
+                <div id="pdfMultiDocSelector" style="display: none; margin-bottom: 12px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 14px; padding: 8px 10px;">
+                  <div id="pdfDocButtonsList" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+                </div>
+
+                <div class="pdf-page-header">
+                  <span id="pdfDocumentTitle">Dokumen / Buku Teks</span>
+                  <span style="font-weight: 800; color: var(--kid-blue);" id="pdfPageBadge">Standby</span>
+                </div>
+                <div style="font-weight: 800; font-size: 0.95rem; color: #0f172a;" id="pdfChapterTitle">
+                  Standby: Dokumen PDF
+                </div>
+
+                <!-- Canvas Render Asli PDF.js & Lembar Dokumen Fisik Terpadu (Track D Source Preview) -->
+                <div id="pdfCanvasContainer" style="margin: 8px 0; text-align: center; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                  <!-- Standby Box jika belum ada materi PDF diunggah -->
+                  <div id="pdfEmptyStandbyBox" style="display: none; padding: 24px 16px; text-align: center; color: #94a3b8; font-size: 0.82rem; border: 2px dashed #cbd5e1; border-radius: 14px; background: #ffffff; width: 100%; box-sizing: border-box;">
+                    <span style="font-size: 1.8rem; display: block; margin-bottom: 6px;">📄</span>
+                    <strong style="color: #64748b; font-size: 0.88rem; display: block; margin-bottom: 4px;">Belum Ada Dokumen PDF Diunggah</strong>
+                    <span>Unggah berkas PDF materi kuliah di Mode Dosen untuk melihat pratinjau halaman buku dan dokumen di sini.</span>
+                  </div>
+
+                  <!-- Canvas render fisik asli dari PDF.js -->
+                  <canvas id="pdfPageCanvas" style="display: none; max-width: 100%; border-radius: 12px; border: 2px solid #cbd5e1; box-shadow: 0 4px 14px rgba(0,0,0,0.08); background: #ffffff;"></canvas>
+
+                  <!-- Lembar Dokumen Fisik Interaktif (Grounded Document Sheet) jika canvas belum selesai atau format dokumen -->
+                  <div id="pdfFallbackSheet" style="display: none; width: 100%; background: #ffffff; border: 2px solid #cbd5e1; border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); padding: 18px 20px; text-align: left; position: relative; overflow: hidden; box-sizing: border-box;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 12px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.2rem;">📄</span>
+                        <div>
+                          <strong id="pdfSheetDocName" style="font-size: 0.85rem; color: #0f172a; display: block; font-family: var(--font-kids);">Dokumen Kuliah</strong>
+                          <span style="font-size: 0.72rem; color: #64748b;">Sumber Terverifikasi Track D</span>
+                        </div>
+                      </div>
+                      <span id="pdfSheetPageBadge" style="background: #e0f2fe; color: #0369a1; font-weight: 800; font-size: 0.75rem; padding: 3px 9px; border-radius: 8px; border: 1px solid #bae6fd;">
+                        Hal. 1
+                      </span>
+                    </div>
+
+                    <div style="font-family: 'Times New Roman', Times, Georgia, serif; font-size: 0.92rem; line-height: 1.65; color: #1e293b; min-height: 140px; background: #fafafa; padding: 14px 16px; border-radius: 10px; border: 1px solid #f1f5f9; position: relative;">
+                      <div style="position: absolute; right: 12px; bottom: 8px; font-size: 0.65rem; color: #cbd5e1; font-family: sans-serif; pointer-events: none; font-weight: 700;">
+                        OMNITUTOR AI SOURCE-GROUNDED
+                      </div>
+                      <div id="pdfSheetTextContent" style="white-space: pre-wrap; word-break: break-word;">
+                        Memuat konten halaman dokumen...
+                      </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.72rem; color: #94a3b8;">
+                      <span>✓ OCR &amp; Teks Asli Terindeks</span>
+                      <span id="pdfSheetPageFooter">Halaman 1</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Kontrol Navigasi Halaman PDF -->
+                <div id="pdfPageControlsBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-bottom: 8px; border-bottom: 1.5px dashed #e2e8f0;">
+                  <button class="jelly-btn-3d btn-white" id="btnPdfPrevPage" style="padding: 5px 16px; font-size: 0.85rem; font-weight: 800; border-radius: 20px; opacity: 0.5; cursor: not-allowed;" type="button" onclick="navigatePdfPage(-1)" title="Halaman Sebelumnya" disabled>
+                    ◀
+                  </button>
+                  <span id="pdfCurrentPageIndicator" style="font-size: 0.88rem; color: #475569; font-weight: 800; letter-spacing: 0.5px;">-/-</span>
+                  <button class="jelly-btn-3d btn-white" id="btnPdfNextPage" style="padding: 5px 16px; font-size: 0.85rem; font-weight: 800; border-radius: 20px; opacity: 0.5; cursor: not-allowed;" type="button" onclick="navigatePdfPage(1)" title="Halaman Selanjutnya" disabled>
+                    ▶
+                  </button>
+                </div>
+
+                <div class="pdf-highlighted-paragraph" id="pdfHighlightedText" style="color: #64748b; font-style: italic;">
+                  Kutipan teks dan halaman rujukan dari dokumen PDF dosen akan disorot di sini saat Anda membuka sitasi pada jawaban AI Tutor.
+                </div>
+                <div id="pdfDiagramBox" style="display: none; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 10px 12px; margin-top: 8px;"></div>
+              </div>
+            </div>
+
+            <!-- Display 3: Video Player Viewer (Real Media Player & Grounded Timestamp) -->
+            <div id="viewerVideoSection" style="display: none;">
+              <!-- Pemutar Video Nyata jika berkas video diunggah -->
+              <video id="evidenceRealVideoPlayer" controls style="display: none; width: 100%; border-radius: 18px; max-height: 220px; background: #0f172a; margin-bottom: 8px; border: 2px solid #334155;"></video>
+
+              <!-- Mockup Player Layar jika berkas video belum terhubung -->
+              <div class="player-screen-box" id="playerScreenBoxMock">
+                <div class="player-badge-timestamp" id="videoTimestampBadge">
+                  <span>🔴 00:00</span>
+                </div>
+                <div class="player-center-play" id="videoPlayerPlayBtn" onclick="togglePlayEvidenceVideo()">
+                  ▶
+                </div>
+                <div class="player-bottom-info">
+                  <div style="font-weight: 800; color: #ffffff;" id="videoLectureTitle">Standby: Player Video Kuliah</div>
+                  <div style="color: #94a3b8; font-size: 0.72rem;" id="videoLectureSub">Timestamp akan otomatis menyesuaikan dengan kutipan menit materi</div>
+                </div>
+              </div>
+
+              <div class="transcript-box" style="margin-top: 12px;">
+                <div style="font-family: var(--font-kids); font-weight: 800; color: #c2410c; margin-bottom: 4px;">
+                  🎙️ Transkrip Audio / Rangkuman Segmen Video:
+                </div>
+                <p id="videoTranscriptText" style="color: #64748b; font-style: italic;">
+                  Transkrip audio dan rekaman video kuliah dosen akan ditampilkan di sini saat segmen video dirujuk.
+                </p>
+              </div>
+            </div>
+
+            <!-- RAG & Faithfulness Metrics Badge -->
+            <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; padding: 10px 14px; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="color: #64748b; font-weight: 700;">Cosine Similarity:</span>
+                <strong id="ragCosineBadge" style="color: #059669;">- (Menunggu Query)</strong>
+              </div>
+              <div>
+                <span style="color: #64748b; font-weight: 700;">Guardrail Threshold:</span>
+                <strong style="color: #2563eb;">≥ 0.70 (Strict Grounding)</strong>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      <!-- =====================================================================
+           HALAMAN KHUSUS: 📝 ADAPTIVE EXAM & PRACTICE CENTER (TRACK D COGNITIVE STUDENT TRACING)
+           ===================================================================== -->
+      <main class="kids-practice-view" id="view-practice" style="display: none;">
+        <!-- Header Halaman Practice -->
+        <div class="practice-page-header">
+          <div class="practice-header-title-box">
+            <div class="practice-header-avatar">📝</div>
+            <div class="practice-header-text">
+              <h2>Adaptive Exam &amp; Practice Center</h2>
+              <p>✓ Cognitive Student Tracing (BKT) · Cross-Model Validation · Zero Repetition</p>
+            </div>
+          </div>
+          <div class="practice-header-badges">
+            <div class="stat-pill" style="padding: 6px 12px; font-size: 0.82rem; background: #f0fdf4; border: 2px solid #86efac; color: #166534;" title="Bayesian Knowledge Tracing Real-Time">
+              <span>⚡</span> <strong>BKT Engine: Active</strong>
+            </div>
+            <div class="stat-pill" style="padding: 6px 12px; font-size: 0.82rem; background: #eff6ff; border: 2px solid #93c5fd; color: #1e40af;" title="Anti-Repetition Registry">
+              <span>🛡️</span> <strong>0 Soal Duplikasi</strong>
+            </div>
+            <div class="stat-pill" style="padding: 6px 12px; font-size: 0.82rem; background: #fefce8; border: 2px solid #fef08a; color: #854d0e;" title="Validasi AI Bebas Halusinasi">
+              <span>🔬</span> <strong>Groq LLaMA-3.3 70B Validated</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Mode Asesmen (Track D Core Features) -->
+        <div class="practice-nav-tabs">
+          <button class="practice-tab-btn active" id="tabPracticeGen" type="button" onclick="switchPracticeTab('generator')">
+            <span>🎛️</span> <strong>Generator Ujian Mandiri</strong>
+          </button>
+          <button class="practice-tab-btn" id="tabPracticeDiag" type="button" onclick="switchPracticeTab('diagnostic')">
+            <span>⚡</span> <strong>Kuis Diagnostik (Intake Siswa Baru)</strong>
+          </button>
+          <button class="practice-tab-btn" id="tabPracticeRemedial" type="button" onclick="switchPracticeTab('remedial')">
+            <span>🎯</span> <strong>Remedial Sprint (Target Miskonsepsi)</strong>
+          </button>
+        </div>
+
+        <!-- 1. CONTAINER: GENERATOR UJIAN MANDIRI (STUDENT-CHOSEN SCOPE) -->
+        <div id="practiceSectionGenerator" class="practice-card-box">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+            <div>
+              <h3 style="font-family: var(--font-kids); font-size: 1.3rem; color: #0f172a; font-weight: 800;">
+                🎯 Buat Kuis Adaptif Mandiri (Custom Scope)
+              </h3>
+              <p style="font-size: 0.88rem; color: #64748b; font-weight: 700;">
+                Pilih cakupan topik materi, tingkat kesulitan, dan format soal. Algoritma akan men-generate soal terverifikasi sumber tanpa repetisi.
+              </p>
+            </div>
+            <span id="practiceScopeBadge" style="display: none; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 800;">
+            </span>
+          </div>
+
+          <!-- Section: Cakupan Topik (Scope Selection) -->
+          <div style="margin-top: 16px;">
+            <label style="font-family: var(--font-kids); font-weight: 800; font-size: 0.95rem; color: #334155;">
+              1. Pilih Cakupan Topik Materi (Multi-Topic):
+            </label>
+            <div class="scope-selection-grid" id="practiceScopeSelectionGrid">
+              <div style="grid-column: 1 / -1; padding: 16px 12px; text-align: center; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 18px; color: #64748b;">
+                <div style="font-size: 1.8rem; margin-bottom: 4px;">📂</div>
+                <strong style="font-family: var(--font-kids); font-size: 0.95rem; color: #1e293b; display: block; margin-bottom: 2px;">
+                  Belum Ada Materi
+                </strong>
+                <p style="font-size: 0.82rem; color: #64748b; margin: 0 0 10px 0;">
+                  Unggah materi di Mode Dosen untuk memulai kuis.
+                </p>
+                <button class="jelly-btn-3d btn-white" type="button" style="padding: 6px 16px; font-size: 0.82rem; border-color: #6366f1; color: #4338ca;" onclick="switchMainView('lecturer')">
+                  <span>👨‍🏫 Buka Mode Dosen</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Format Soal (Track D Requirement 3.a: MCQ, Short Answer, Numerical) -->
+          <div style="margin-top: 14px;">
+            <label style="font-family: var(--font-kids); font-weight: 800; font-size: 0.95rem; color: #334155;">
+              2. Format Soal yang Diujikan (Track D Requirement):
+            </label>
+            <div class="modality-badge-list">
+              <div class="modality-pill-item active" id="modalMcq" onclick="toggleModality('modalMcq')">
+                <span>🔘</span> <strong>Pilihan Ganda (MCQ)</strong>
+              </div>
+              <div class="modality-pill-item active" id="modalNum" onclick="toggleModality('modalNum')">
+                <span>🔢</span> <strong>Soal Numerik (Hitungan ATP)</strong>
+              </div>
+              <div class="modality-pill-item active" id="modalShort" onclick="toggleModality('modalShort')">
+                <span>✏️</span> <strong>Isian Singkat (Short Answer)</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Pengaturan Kesulitan & Jumlah Soal -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 20px;">
+            <div>
+              <label style="font-family: var(--font-kids); font-weight: 800; font-size: 0.9rem; color: #334155; display: block; margin-bottom: 6px;">
+                Tingkat Kesulitan:
+              </label>
+              <select id="examDifficultySelect" style="width: 100%; padding: 10px 14px; border-radius: 14px; border: 2px solid #cbd5e1; font-family: var(--font-kids); font-weight: 700; color: #0f172a; background: #ffffff;">
+                <option value="adaptive">🎯 Adaptif Otomatis (Mengikuti Model BKT)</option>
+                <option value="easy">🟢 Dasar / Pemula (Easy)</option>
+                <option value="medium" selected>🟡 Menengah (Medium)</option>
+                <option value="hard">🔴 Mahir / Analitis (Hard)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="font-family: var(--font-kids); font-weight: 800; font-size: 0.9rem; color: #334155; display: block; margin-bottom: 6px;">
+                Jumlah Soal:
+              </label>
+              <select id="examCountSelect" style="width: 100%; padding: 10px 14px; border-radius: 14px; border: 2px solid #cbd5e1; font-family: var(--font-kids); font-weight: 700; color: #0f172a; background: #ffffff;">
+                <option value="3">⚡ 3 Soal (Sprint Kilat)</option>
+                <option value="5" selected>📝 5 Soal (Asesmen Standar Lengkap)</option>
+                <option value="8">🎯 8 Soal (Latihan Mendalam)</option>
+                <option value="10">🏆 10 Soal (Simulasi Ujian / Mock Exam)</option>
+                <option value="15">📚 15 Soal (Tryout Komprehensif)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Info Box Validasi Ganda & Anti-Repetisi -->
+          <div style="background: #f8fafc; border: 2px dashed #93c5fd; border-radius: 18px; padding: 14px; margin-top: 20px; display: flex; gap: 12px; align-items: center;">
+            <div style="font-size: 1.8rem;">🛡️</div>
+            <div style="font-size: 0.82rem; color: #334155; line-height: 1.35;">
+              <strong>Anti-Hallucination Engine:</strong> Setiap butir soal dan kunci jawaban divalidasi oleh <em>Groq AI Engine (LLaMA-3.3 70B)</em> untuk memastikan bebas halusinasi, diverifikasi ke kutipan halaman buku dan timestamp video, serta di-filter dari basis data repetisi agar tidak mengulang soal sebelumnya.
+            </div>
+          </div>
+
+          <!-- Tombol CTA Generate -->
+          <div style="margin-top: 24px; text-align: center;">
+            <button class="jelly-btn-3d btn-yellow" id="btnStartCustomExam" style="font-size: 1.15rem; padding: 14px 36px; opacity: 0.5; cursor: not-allowed; pointer-events: none;" type="button" disabled onclick="startAdaptiveExam('custom')">
+              <span>Mulai Asesmen Adaptif Sekarang 🚀</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1.B. LOADING STATE ASESMEN ADAPTIF GROQ -->
+        <div id="practiceSectionLoading" class="practice-card-box" style="display: none; text-align: center; padding: 45px 20px;">
+          <div style="font-size: 3.2rem; margin-bottom: 12px; animation: waggle 2s infinite ease-in-out;">⚡</div>
+          <h3 id="practiceLoadingTitle" style="font-family: var(--font-kids); font-size: 1.45rem; font-weight: 800; color: #1e3a8a; margin-bottom: 8px;">
+            Merancang Asesmen Adaptif via Groq AI Engine...
+          </h3>
+          <p id="practiceLoadingSub" style="font-size: 0.9rem; font-weight: 700; color: #475569; max-width: 580px; margin: 0 auto 20px auto; line-height: 1.45;">
+            Menelusuri materi kuliah terindeks, memvalidasi rujukan sumber, dan mengkalibrasi tingkat kesulitan (Anti-Repetisi 0%)...
+          </p>
+          <div style="max-width: 280px; margin: 0 auto; height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden;">
+            <div style="height: 100%; width: 80%; background: var(--kid-blue); border-radius: 10px; animation: remedialPulse 1.2s infinite alternate;"></div>
+          </div>
+        </div>
+
+        <!-- 2. CONTAINER: AREA MENGERJAKAN KUIS AKTIF (ACTIVE INTERACTIVE QUIZ ENGINE) -->
+        <div id="practiceSectionActiveQuiz" class="practice-card-box" style="display: none;">
+          <!-- Meta Bar Soal -->
+          <div class="quiz-meta-bar">
+            <div>
+              <span id="quizQuestionCounterBadge" style="font-family: var(--font-kids); font-weight: 800; font-size: 1.1rem; color: var(--kid-blue);">
+                Soal 1 dari 5
+              </span>
+              <span id="quizTopicTagBadge" style="margin-left: 8px; background: #fef08a; color: #854d0e; padding: 3px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 800;">
+                ⚡ Respirasi Seluler
+              </span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span id="quizDifficultyTagBadge" style="background: #e2e8f0; color: #334155; padding: 3px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 800;">
+                Kesulitan: Medium
+              </span>
+              <span style="font-family: var(--font-kids); font-weight: 800; color: #ea580c; font-size: 0.95rem;" id="quizTimerDisplay">
+                ⏱️ 14:45
+              </span>
+            </div>
+          </div>
+
+          <!-- Progress Bar Kuis -->
+          <div class="quiz-progress-track">
+            <div class="quiz-progress-fill" id="quizProgressFill" style="width: 20%;"></div>
+          </div>
+
+          <!-- Question Box Container -->
+          <div class="question-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+              <span style="font-size: 0.78rem; font-weight: 800; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 6px;" id="quizSourcePill">
+                📖 Rujukan: Campbell Hal. 45 &amp; Video Kuliah 02: 14:20
+              </span>
+              <span style="font-size: 0.75rem; font-weight: 800; color: #16a34a; background: #dcfce7; padding: 2px 8px; border-radius: 6px;">
+                ✓ Grounded &amp; Verified (Groq LLaMA-3.3)
+              </span>
+            </div>
+            <h4 class="question-title-text" id="quizQuestionText">
+              Pertanyaan akan dimuat di sini...
+            </h4>
+            <div id="quizQuestionHint" style="font-size: 0.85rem; color: #64748b; font-weight: 700; margin-top: 4px;"></div>
+          </div>
+
+          <!-- Area Input Jawaban Berdasarkan Tipe Soal -->
+          <!-- A. Jika MCQ -->
+          <div class="quiz-options-grid" id="quizMcqOptionsWrap"></div>
+
+          <!-- B. Jika Numerical -->
+          <div id="quizNumericalWrap" style="display: none; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 18px; padding: 18px; margin-bottom: 20px;">
+            <div style="font-family: var(--font-kids); font-weight: 800; color: #0f172a; margin-bottom: 8px;">
+              🔢 Masukkan Hasil Perhitungan Numerik:
+            </div>
+            <div class="quiz-input-field-wrap">
+              <input type="number" id="quizNumericalInput" class="quiz-input-field" placeholder="Ketik angka hasil akhir..." />
+              <span id="quizNumericalUnitBadge" style="font-family: var(--font-kids); font-weight: 800; font-size: 1rem; color: #475569; background: #e2e8f0; padding: 10px 16px; border-radius: 14px;">
+                ATP
+              </span>
+            </div>
+            <div style="font-size: 0.8rem; color: #64748b; font-weight: 700;">
+              💡 <em>Petunjuk stoikiometri energi: Gunakan efisiensi fosforilasi aerob Campbell Bab 9.</em>
+            </div>
+          </div>
+
+          <!-- C. Jika Short Answer -->
+          <div id="quizShortAnswerWrap" style="display: none; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 18px; padding: 18px; margin-bottom: 20px;">
+            <div style="font-family: var(--font-kids); font-weight: 800; color: #0f172a; margin-bottom: 8px;">
+              ✏️ Tuliskan Konsep Kunci / Nama Istilah:
+            </div>
+            <div class="quiz-input-field-wrap">
+              <input type="text" id="quizShortAnswerInput" class="quiz-input-field" style="max-width: 480px;" placeholder="Ketik istilah biologi..." />
+            </div>
+            <div style="font-size: 0.8rem; color: #64748b; font-weight: 700;">
+              🔍 <em>Evaluator AI akan mencocokkan kata kunci konseptual secara semantik.</em>
+            </div>
+          </div>
+
+          <!-- Tombol Aksi Kuis -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <button class="jelly-btn-3d btn-white" type="button" onclick="cancelQuizToGenerator()">
+              ✕ Keluar Kuis
+            </button>
+            <div style="display: flex; gap: 10px;">
+              <button class="jelly-btn-3d btn-blue" id="btnSubmitCurrentAnswer" type="button" onclick="submitCurrentAnswer()">
+                <span>Periksa Jawaban 🔍</span>
+              </button>
+              <button class="jelly-btn-3d btn-green" id="btnNextQuizQuestion" style="display: none;" type="button" onclick="nextQuizQuestion()">
+                <span>Soal Berikutnya ➔</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Kotak Umpan Balik Tersitasi & Deteksi Miskonsepsi (Track D Requirement 3.c) -->
+          <div id="quizFeedbackContainer" style="display: none;"></div>
+        </div>
+
+        <!-- 3. CONTAINER: LAPORAN DIAGNOSTIK KOGNITIF PASCA-ASESMEN (POST-ASSESSMENT REPORT & BKT MASTERY UPDATE) -->
+        <div id="practiceSectionReport" class="practice-card-box" style="display: none;">
+          <!-- Hero Ringkasan Skor -->
+          <div class="report-summary-hero">
+            <div style="font-size: 3.5rem; margin-bottom: 8px;" id="reportTrophyIcon">🏆</div>
+            <h3 style="font-family: var(--font-kids); font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-bottom: 6px;" id="reportScoreTitle">
+              Asesmen Adaptif Selesai! Skor: 80%
+            </h3>
+            <p style="font-size: 0.95rem; font-weight: 700; color: #475569; max-width: 600px; margin: 0 auto;" id="reportScoreSubtitle">
+              Luar biasa, Rekan Mahasiswa! Model kognitif BKT telah memperbarui estimasi pemahaman topikmu secara instan.
+            </p>
+          </div>
+
+          <!-- Grid Perubahan Tingkat Penguasaan Bayesian Knowledge Tracing (BKT Delta) -->
+          <div style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h4 style="font-family: var(--font-kids); font-weight: 800; font-size: 1.15rem; color: #0f172a;">
+                📈 Pembaruan Learner Model (Bayesian Knowledge Tracing - BKT):
+              </h4>
+              <span style="font-size: 0.78rem; font-weight: 800; background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 8px;">
+                P(L_t | Bukti Jawaban Siswa)
+              </span>
+            </div>
+
+            <div class="bkt-delta-grid" id="reportBktDeltaGrid"></div>
+          </div>
+
+          <!-- Laporan Deteksi Miskonsepsi Siswa & Rencana Tindak Lanjut Remedial -->
+          <div style="background: #fff8f8; border: 2px solid #fecdd3; border-radius: 20px; padding: 18px; margin-top: 20px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <span style="font-size: 1.3rem;">🧠</span>
+              <h4 style="font-family: var(--font-kids); font-size: 1.1rem; font-weight: 800; color: #9f1239;">
+                Diagnosis Kognitif &amp; Analisis Miskonsepsi Terdeteksi:
+              </h4>
+            </div>
+            <div id="reportMisconceptionsContent" style="font-size: 0.88rem; color: #475569; line-height: 1.45;"></div>
+          </div>
+
+          <!-- Metrik Evaluasi Sistem RAG & Cross-Model (Track D Requirement 5) -->
+          <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 18px; padding: 14px 18px; margin-top: 20px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 14px; text-align: center;">
+            <div>
+              <div style="font-size: 0.78rem; font-weight: 700; color: #64748b;">Faithfulness (Kebenaran Sumber)</div>
+              <div style="font-family: var(--font-kids); font-weight: 800; font-size: 1.15rem; color: #16a34a;">98.4% (Tinggi)</div>
+            </div>
+            <div>
+              <div style="font-size: 0.78rem; font-weight: 700; color: #64748b;">Answer Relevancy</div>
+              <div style="font-family: var(--font-kids); font-weight: 800; font-size: 1.15rem; color: #2563eb;">96.8% (Akurat)</div>
+            </div>
+            <div>
+              <div style="font-size: 0.78rem; font-weight: 700; color: #64748b;">Question De-duplication</div>
+              <div style="font-family: var(--font-kids); font-weight: 800; font-size: 1.15rem; color: #7c3aed;">0 Repetisi (100% Unik)</div>
+            </div>
+          </div>
+
+          <!-- Tombol Aksi Pasca Asesmen -->
+          <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap;">
+            <button class="jelly-btn-3d btn-blue" type="button" onclick="discussReportWithAiTutor()">
+              <span>🤖 Bahas Bersama AI Tutor 💬</span>
+            </button>
+            <button class="jelly-btn-3d btn-yellow" type="button" onclick="switchPracticeTab('generator')">
+              <span>🔄 Buat Kuis Baru</span>
+            </button>
+            <button class="jelly-btn-3d btn-green" type="button" onclick="switchMainView('learn')">
+              <span>📚 Kembali ke Belajar (Learn)</span>
+            </button>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- =====================================================================
+           HALAMAN KHUSUS: 📊 PROGRESS, LEARNER MODEL & RAGAS BENCHMARK (TRACK D)
+           ===================================================================== -->
+      <main class="kids-progress-view" id="view-progress" style="display: none;">
+        <!-- Konten di-render secara dinamis oleh renderProgressView() berdasarkan berkas & topik aktif -->
+      </main>
+
+      <!-- =====================================================================
+           HALAMAN KHUSUS: 👨‍🏫 MODE DOSEN & INGESTION HUB (TRACK D REQUIREMENT 1)
+           ===================================================================== -->
+      <main class="kids-lecturer-view" id="view-lecturer">
+        <!-- Hero Section Dosen -->
+        <div class="lecturer-hero-card">
+          <div style="max-width: 680px; z-index: 1;">
+            <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 4px 14px; font-size: 0.8rem; font-weight: 700; margin-bottom: 12px;">
+              <span>🎓 Track D Requirement 1: Multimodal Knowledge Base Ingestion</span>
+            </div>
+            <h1 style="font-size: 1.85rem; font-weight: 900; margin-bottom: 8px; line-height: 1.25;">
+              Lecturer Ingestion Hub &amp; Course Knowledge Base
+            </h1>
+            <p style="font-size: 0.95rem; opacity: 0.92; line-height: 1.5; margin-bottom: 16px;">
+              Ruang kerja Dosen untuk mendaftarkan mata kuliah baru, mengunggah materi kuliah (Video MP4, Buku PDF, Slide PPTX) tanpa pra-pemrosesan manual, dan mengindeksnya ke dalam basis pengetahuan berbasis kutipan presisi (*source-grounded*).
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="jelly-btn-3d btn-white" type="button" onclick="switchMainView('learn')" style="color: #1e1b4b;">
+                <span>👁️ Lihat Tampilan Mahasiswa</span>
+              </button>
+              <button class="jelly-btn-3d btn-white" type="button" onclick="resetCourseToInitialState()" style="font-size: 0.82rem; background: rgba(255,255,255,0.2); color: #ffffff; border-color: rgba(255,255,255,0.3);">
+                <span>🔄 Kosongkan Seluruh Basis Data</span>
+              </button>
+            </div>
+          </div>
+          
+          <div style="background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); border-radius: 20px; padding: 18px 22px; min-width: 270px; z-index: 1;">
+            <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; margin-bottom: 6px;">Course Overview</div>
+            <div style="font-size: 1.25rem; font-weight: 900; margin-bottom: 12px;" id="courseOverviewTitle">📚 Siap Diisi Materi Kuliah</div>
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Total Modul:</span>
+                <strong id="courseOverviewModules">0 Topik Terindeks</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Total Multimodal Chunks:</span>
+                <strong id="ingestTotalChunks">0 Chunks</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Diagram Visual:</span>
+                <strong id="ingestTotalDiagrams">0 Ekstraksi Gambar</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>AI &amp; Indexing Engine:</span>
+                <strong>Groq LLaMA-3.3 70B (Vector Chunks)</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Status Basis Data:</span>
+                <strong id="courseOverviewStatus" style="color: #cbd5e1;">Menunggu Berkas</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ribbon Status Pipeline Multimodal -->
+        <div class="ingest-stats-ribbon">
+          <div class="ingest-stat-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #475569;">🎥 Video Kuliah</span>
+              <span style="font-size: 1.4rem;">📹</span>
+            </div>
+            <div style="font-size: 1.45rem; font-weight: 900; color: #dc2626;" id="statVideoCount">0 Sesi Terunggah</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;" id="statVideoSub">Belum ada rekaman video diunggah</div>
+          </div>
+
+          <div class="ingest-stat-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #475569;">📄 Buku Teks (PDF)</span>
+              <span style="font-size: 1.4rem;">📖</span>
+            </div>
+            <div style="font-size: 1.45rem; font-weight: 900; color: #0284c7;" id="statPdfCount">0 Dokumen (0 Hal)</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;" id="statPdfSub">Belum ada dokumen PDF diunggah</div>
+          </div>
+
+          <div class="ingest-stat-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #475569;">📊 Slide Presentasi</span>
+              <span style="font-size: 1.4rem;">📑</span>
+            </div>
+            <div style="font-size: 1.45rem; font-weight: 900; color: #d97706;" id="statSlideCount">0 Berkas (0 Slide)</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;" id="statSlideSub">Belum ada slide presentasi diunggah</div>
+          </div>
+
+          <div class="ingest-stat-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #475569;">🧠 Knowledge Graph</span>
+              <span style="font-size: 1.4rem;">🕸️</span>
+            </div>
+            <div style="font-size: 1.45rem; font-weight: 900; color: #059669;" id="statKgStatus">0 Simpul Konsep</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;" id="statKgSub">Belum ada relasi prasyarat DAG terpetakan</div>
+          </div>
+        </div>
+
+        <!-- Workspace Utama: Formulir Ingestion Nyata & Katalog Basis Pengetahuan -->
+        <div class="lecturer-workspace-grid">
+          <!-- Kiri: Ruang Kerja Pengunggahan & Form Ingestion Asli -->
+          <div class="lecturer-card">
+            <!-- Header Panel -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <h2 style="font-size: 1.15rem; font-weight: 900; color: #1e293b; margin: 0;">
+                  📤 Formulir Ingestion Materi Kuliah
+                </h2>
+                <p style="font-size: 0.82rem; color: #64748b; margin: 2px 0 0 0;">
+                  Format resmi Track D: Video (.mp4, .webm), Buku (.pdf), Slide (.pptx, .pdf)
+                </p>
+              </div>
+              <span style="background: #e0e7ff; color: #4338ca; font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 12px;">Zero Pre-processing</span>
+            </div>
+
+
+            <!-- Input Berkas Native Browser (Hidden Inputs) -->
+            <input type="file" id="realVideoFileInput" accept="video/mp4,video/webm,video/mkv" multiple style="display: none;" onchange="handleLecturerFileInput(event, 'video')">
+            <input type="file" id="realPdfFileInput" accept=".pdf" multiple style="display: none;" onchange="handleLecturerFileInput(event, 'pdf')">
+            <input type="file" id="realSlideFileInput" accept=".pptx,.ppt,.pdf" multiple style="display: none;" onchange="handleLecturerFileInput(event, 'slide')">
+
+            <!-- Tombol Pilih Berkas Mandiri -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px;">
+              <button class="jelly-btn-3d btn-white" type="button" onclick="document.getElementById('realVideoFileInput').click()" style="padding: 10px 8px; font-size: 0.78rem; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 16px;">
+                <span style="font-size: 1.3rem;">🎥</span>
+                <span style="white-space: nowrap;">+ Unggah Video</span>
+              </button>
+              <button class="jelly-btn-3d btn-white" type="button" onclick="document.getElementById('realPdfFileInput').click()" style="padding: 10px 8px; font-size: 0.78rem; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 16px;">
+                <span style="font-size: 1.3rem;">📄</span>
+                <span style="white-space: nowrap;">+ Unggah PDF Buku</span>
+              </button>
+              <button class="jelly-btn-3d btn-white" type="button" onclick="document.getElementById('realSlideFileInput').click()" style="padding: 10px 8px; font-size: 0.78rem; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 16px;">
+                <span style="font-size: 1.3rem;">📊</span>
+                <span style="white-space: nowrap;">+ Unggah Slide PPT</span>
+              </button>
+            </div>
+
+            <!-- Drag & Drop Zone Asli -->
+            <div class="ingest-dropzone" id="lecturerDropZone" ondragover="event.preventDefault(); this.style.borderColor='#4f46e5';" ondragleave="this.style.borderColor='#818cf8';" ondrop="handleDropFiles(event)">
+              <div style="font-size: 2.2rem; margin-bottom: 4px;">📂</div>
+              <h3 style="font-size: 0.95rem; font-weight: 800; color: #3730a3; margin: 0 0 4px 0;">
+                Tarik &amp; Lepaskan Berkas ke Sini
+              </h3>
+              <p style="font-size: 0.78rem; color: #6366f1; margin: 0 0 10px 0;">
+                Atau gunakan 3 tombol di atas untuk memilih berkas dari komputer Anda
+              </p>
+              <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; font-size: 0.72rem; color: #475569;">
+                <span>✨ Auto Speech-to-Text Whisper</span>
+                <span>•</span>
+                <span>✨ OCR Vision Diagram</span>
+                <span>•</span>
+                <span>✨ DAG Knowledge Graph</span>
+              </div>
+            </div>
+
+            <!-- Tabel Antrian Berkas yang Dipilih (Upload Queue) -->
+            <div style="margin-top: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div style="font-size: 0.82rem; font-weight: 800; color: #334155;">
+                  📋 Antrian Berkas Materi (<span id="queueCount">0</span> Berkas Siap Di-ingest)
+                </div>
+                <button type="button" onclick="clearUploadQueue()" style="background: none; border: none; font-size: 0.75rem; color: #ef4444; font-weight: 700; cursor: pointer;">
+                  Kosongkan Antrian
+                </button>
+              </div>
+
+              <div class="queue-table-wrap">
+                <table class="queue-table">
+                  <thead>
+                    <tr>
+                      <th>Nama Berkas</th>
+                      <th>Tipe</th>
+                      <th>Ukuran</th>
+                      <th>Status</th>
+                      <th style="text-align: right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="uploadQueueBody">
+                    <tr>
+                      <td colspan="5" style="text-align: center; color: #94a3b8; padding: 18px 10px; font-size: 0.8rem;">
+                        Belum ada berkas dalam antrian. Silakan pilih berkas video, buku, atau slide di atas.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Tombol Eksekusi Ingestion Asli -->
+            <div style="margin-top: 18px; display: flex; gap: 10px;">
+              <button class="jelly-btn-3d btn-yellow" type="button" onclick="executeRealIngestionPipeline()" style="flex: 1; padding: 14px 18px; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span>🚀 Jalankan Ingestion &amp; Indexing Materi</span>
+              </button>
+            </div>
+
+            <!-- Indikator Proses Realtime (Hanya muncul saat sedang memproses materi) -->
+            <div id="ingestPipelineBox" style="margin-top: 16px; display: none; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 18px; padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-weight: 800; font-size: 0.85rem; color: #1e293b;" id="ingestPipelineStatusText">
+                  🔄 Memproses Multimodal Ingestion...
+                </div>
+                <div style="font-weight: 900; font-size: 0.85rem; color: #4338ca;" id="ingestPipelinePct">
+                  0%
+                </div>
+              </div>
+              <div style="height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 12px;">
+                <div id="ingestPipelineBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.3s;"></div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.78rem; color: #475569;" id="ingestPipelineStepsList">
+                <!-- Diisi via JS -->
+              </div>
+            </div>
+          </div>
+          </div>
+
+          <!-- Kanan: Knowledge Base Catalog & Prerequisite Auto-Mapper -->
+          <div class="lecturer-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <h2 style="font-size: 1.15rem; font-weight: 900; color: #1e293b; margin: 0;">
+                  📚 Katalog Materi &amp; Tagging Otomatis
+                </h2>
+                <p style="font-size: 0.82rem; color: #64748b; margin: 2px 0 0 0;">
+                  Setiap unit terhubung langsung ke asal halaman, nomor slide, dan timestamp rekaman
+                </p>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="jelly-btn-3d btn-green" type="button" onclick="exportKnowledgeBaseManifest()" style="font-size: 0.78rem; padding: 6px 12px;">
+                  💾 Export Manifest
+                </button>
+                <button class="jelly-btn-3d btn-white" type="button" onclick="clearCatalogData()" style="font-size: 0.78rem; padding: 6px 10px; color: #ef4444;">
+                  🗑️ Kosongkan
+                </button>
+              </div>
+            </div>
+
+            <!-- List Materi Terunggah (Dinamis dari state) -->
+            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; max-height: 700px;" id="ingestedAssetsList">
+              <!-- Item-item katalog akan di-render secara dinamis dari JS array courseKnowledgeBase -->
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- =====================================================================
+         POPUP MODAL KARTUN INTERAKTIF
+         ========================================================================= -->
+    <div class="modal-kids-overlay" id="kidsModal" onclick="if(event.target===this) closeKidModal();">
+      <div class="modal-kids-card">
+        <div class="modal-big-badge" id="modalEmojiIcon">🎉</div>
+        <h3 class="modal-kids-title" id="modalKidTitle">Siklus Calvin</h3>
+        <div class="modal-kids-desc" id="modalKidDesc">
+          Ayo cari tahu bagaimana tanaman membuat gula manis dari udara!
+        </div>
+        <div id="modalExtraContent" style="margin-bottom: 18px;"></div>
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button class="jelly-btn-3d btn-white" type="button" onclick="closeKidModal()">Tutup</button>
+          <button class="jelly-btn-3d btn-yellow" id="modalMainActionBtn" type="button" onclick="startPlayLesson()">Ayo Main! 🚀</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         MODAL AUTENTIKASI AKSES DOSEN (PASSWORD GATE: 12345)
+         ========================================================================= -->
+    <div class="modal-kids-overlay" id="lecturerAuthModal" onclick="if(event.target===this) closeLecturerAuthModal();">
+      <div class="modal-kids-card" style="max-width: 310px; padding: 22px 20px; border-radius: 24px; border: 3px solid #6366f1; box-shadow: 0 8px 0 #4338ca; text-align: center;">
+        <div style="font-size: 2.1rem; margin-bottom: 2px;">🔒</div>
+        <h3 class="modal-kids-title" style="color: #3730a3; font-size: 1.18rem; margin: 0 0 10px 0;">
+          Akses Mode Dosen
+        </h3>
+
+        <!-- Form Sandi Minimalis -->
+        <form onsubmit="event.preventDefault(); verifyLecturerPassword();" style="display: flex; flex-direction: column; gap: 10px;">
+          <input 
+            type="password" 
+            id="lecturerPasswordInput" 
+            placeholder="Ketik PIN..." 
+            autocomplete="current-password"
+            style="width: 100%; padding: 9px 12px; border: 2px solid #cbd5e1; border-radius: 12px; font-size: 1.1rem; text-align: center; letter-spacing: 4px; font-weight: 800; color: #1e1b4b; outline: none; background: #f8fafc; transition: all 0.2s;"
+            onfocus="this.style.borderColor='#6366f1'; this.style.background='#ffffff';"
+            onblur="this.style.borderColor='#cbd5e1'; this.style.background='#f8fafc';"
+          />
+
+          <div id="lecturerAuthErrorMsg" style="display: none; color: #dc2626; font-size: 0.76rem; font-weight: 700; background: #fee2e2; padding: 6px 10px; border-radius: 8px; border: 1px solid #fca5a5;">
+            ❌ Password salah!
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 2px;">
+            <button class="jelly-btn-3d btn-white" type="button" onclick="closeLecturerAuthModal()" style="flex: 1; padding: 8px 12px; font-size: 0.85rem; border-radius: 12px;">
+              Batal
+            </button>
+            <button class="jelly-btn-3d btn-yellow" type="submit" style="flex: 1.3; padding: 8px 12px; font-size: 0.85rem; border-radius: 12px; background: #6366f1; border-color: #4f46e5; box-shadow: 0 3px 0 #3730a3; color: #ffffff;">
+              Masuk 🔓
+            </button>
+          </div>
+
+          <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">
+            <span>💡 PIN: <strong>12445</strong></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- GOOGLE TRANSLATE ELEMENT INTEGRATION -->
+    <div id="google_translate_element" style="display:none !important;"></div>
+    <script type="text/javascript">
+      function googleTranslateElementInit() {
+        if (window.google && window.google.translate) {
+          try {
+            new window.google.translate.TranslateElement({
+              pageLanguage: 'id',
+              includedLanguages: 'en,hi,id',
+              autoDisplay: false
+            }, 'google_translate_element');
+          } catch(e) {}
+        }
+      }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+    <!-- SCRIPT MULTILINGUAL ENGINE (i18n), MULTIMODAL PARSER & INTERAKSI CERIA -->
+    <script src="/src/i18n.js"></script>
+    <script src="/src/multimodal-parser.js"></script>
+    <script src="/src/app.js"></script>
+  </body>
+</html>
