@@ -12,8 +12,20 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load .env automatically if available
+try {
+  if (typeof process.loadEnvFile === 'function' && fs.existsSync(path.join(__dirname, '.env'))) {
+    process.loadEnvFile(path.join(__dirname, '.env'));
+  }
+} catch (e) {}
+
 const PORT = process.env.PORT || 3000;
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_API_KEYS = [
+  process.env.GROQ_API_KEY,
+  process.env.GROQ_API_KEY_2,
+  process.env.GROQ_API_KEY_SECONDARY,
+  ...(process.env.GROQ_API_KEYS ? process.env.GROQ_API_KEYS.split(',') : [])
+].map(k => (k || '').trim()).filter(Boolean);
 
 // Content-Type mapping for static assets
 const MIME_TYPES = {
@@ -153,7 +165,9 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, {
       status: 'ok',
       platform: 'Railway',
-      groqConfigured: !!GROQ_API_KEY,
+      groqConfigured: GROQ_API_KEYS.length > 0,
+      totalGroqKeys: GROQ_API_KEYS.length,
+      hasBackupKey: GROQ_API_KEYS.length > 1,
       timestamp: new Date().toISOString()
     });
     return;
@@ -162,7 +176,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/ingest' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
-      const result = await handleGroqIngestion(body, GROQ_API_KEY);
+      const result = await handleGroqIngestion(body, GROQ_API_KEYS);
       sendJson(res, 200, result);
     } catch (err) {
       console.error('API /api/ingest error:', err);
@@ -174,7 +188,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/tutor' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
-      const result = await handleGroqTutorChat(body, GROQ_API_KEY);
+      const result = await handleGroqTutorChat(body, GROQ_API_KEYS);
       sendJson(res, 200, result);
     } catch (err) {
       console.error('API /api/tutor error:', err);
@@ -186,7 +200,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/quiz' && req.method === 'POST') {
     try {
       const body = await parseJsonBody(req);
-      const result = await handleGroqQuizGeneration(body, GROQ_API_KEY);
+      const result = await handleGroqQuizGeneration(body, GROQ_API_KEYS);
       sendJson(res, 200, result);
     } catch (err) {
       console.error('API /api/quiz error:', err);
@@ -203,7 +217,7 @@ const server = http.createServer(async (req, res) => {
       const mimeType = req.headers['content-type'] || 'audio/wav';
       const buffer = await getRawBodyBuffer(req);
 
-      const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, GROQ_API_KEY);
+      const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, GROQ_API_KEYS);
       sendJson(res, 200, result);
     } catch (err) {
       console.error('API /api/transcribe-video error:', err);
@@ -224,5 +238,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 OmniTutor server running on port ${PORT}`);
-  console.log(`🔑 Groq API Key: ${GROQ_API_KEY ? 'Configured ✅' : 'Missing (Set GROQ_API_KEY in environment) ⚠️'}`);
+  console.log(`🔑 Groq API Keys: ${GROQ_API_KEYS.length} key(s) aktif (Auto-Failover: ${GROQ_API_KEYS.length > 1 ? 'Aktif ✅' : 'Hanya 1 key'})`);
 });

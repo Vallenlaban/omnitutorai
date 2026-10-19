@@ -133,6 +133,17 @@ function safeParseLLMJson(raw) {
   }
 }
 
+// Helper untuk mengurai daftar API Key (Primary & Backup / Failover)
+function extractGroqKeys(apiKeysInput) {
+  let keys = [];
+  if (Array.isArray(apiKeysInput)) {
+    keys = apiKeysInput.filter(k => typeof k === 'string' && k.trim().length > 0);
+  } else if (typeof apiKeysInput === 'string' && apiKeysInput.trim().length > 0) {
+    keys = apiKeysInput.split(',').map(k => k.trim()).filter(Boolean);
+  }
+  return [...new Set(keys)];
+}
+
 export async function handleGroqIngestion(body, apiKey) {
   const {
     fileName,
@@ -294,6 +305,11 @@ KEMBALIKAN HANYA FORMAT RAW JSON STRICT TANPA MARKDOWN BACKTICKS (STRICT JSON ON
   }
 }`;
 
+  const availableKeys = extractGroqKeys(apiKey);
+  if (availableKeys.length === 0) {
+    throw new Error('Tidak ada API Key Groq yang tersedia. Harap isi GROQ_API_KEY di .env atau environment server.');
+  }
+
   const modelsToTry = [
     'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
@@ -301,104 +317,111 @@ KEMBALIKAN HANYA FORMAT RAW JSON STRICT TANPA MARKDOWN BACKTICKS (STRICT JSON ON
   ];
   let lastError = null;
 
-  for (const model of modelsToTry) {
-    try {
-      const tokenLimit = model.includes('qwen') ? 950 : 2500;
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a specialized Multimodal Educational Knowledge Base Ingestion Engine. Output valid raw JSON only, strictly matching the user document content without hallucinations or placeholder concepts.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: tokenLimit
-        })
-      });
+  // Coba berurutan: jika Key 1 error atau terkena rate limit, otomatis beralih ke Key 2
+  for (let keyIdx = 0; keyIdx < availableKeys.length; keyIdx++) {
+    const currentApiKey = availableKeys[keyIdx];
+    const keyLabel = `Key #${keyIdx + 1} (...${currentApiKey.slice(-6)})`;
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq status ${response.status}`);
-      }
-
-      const data = await response.json();
-      let content = data.choices?.[0]?.message?.content || '';
-      if (!content && data.choices?.[0]?.message?.reasoning) {
-        const r = data.choices[0].message.reasoning;
-        if (r.includes('{') && r.includes('}')) content = r;
-      }
-      const parsed = safeParseLLMJson(content || '{}');
-
-      // Pastikan output memiliki array topics
-      if (!parsed.topics || !Array.isArray(parsed.topics) || parsed.topics.length === 0) {
-        if (parsed.topicTitle) {
-          parsed.topics = [
-            {
-              code: 'TOPIK 01',
-              title: parsed.topicTitle,
-              prerequisites: parsed.prerequisites || 'Fondasi Materi',
-              sourceCitation: parsed.sourceCitation || (fileType === 'pdf' ? `📄 ${fileName} (Hal. 1 - ${detectedPages})` : fileType === 'video' ? `🎥 ${fileName} (00:00 - ${detectedDuration}:00)` : `📊 ${fileName} (Slide 1 - ${detectedSlides})`),
-              chunksCount: parsed.chunksCount || 20,
-              diagramCount: parsed.diagramCount || 2,
-              diagramInsight: parsed.diagramInsight || 'Ekstraksi representasi multimodal terstruktur.',
-              keyConcepts: parsed.keyConcepts || ['Konsep Dasar', 'Penerapan']
-            }
-          ];
-        }
-      }
-
-      // Pastikan integritas sitasi sesuai tipe berkas riil
-      if (Array.isArray(parsed.topics)) {
-        parsed.topics = parsed.topics.map((t, idx) => {
-          let cit = t.sourceCitation || '';
-          if (fileType === 'video') {
-            if (!cit.includes('🎥') || cit.includes('Hal.') || cit.includes('Slide')) {
-              const startM = String(idx * 15).padStart(2, '0') + ':00';
-              const endM = String(Math.min(detectedDuration, (idx + 1) * 15)).padStart(2, '0') + ':00';
-              cit = `🎥 ${fileName} (${startM} - ${endM})`;
-            }
-          } else if (fileType === 'slide') {
-            if (!cit.includes('📊') || cit.includes('Hal.')) {
-              const s1 = idx * 10 + 1;
-              const s2 = Math.min(detectedSlides, (idx + 1) * 10);
-              cit = `📊 ${fileName} (Slide ${s1} - ${s2})`;
-            }
-          }
-          return {
-            ...t,
-            sourceCitation: cit
-          };
+    for (const model of modelsToTry) {
+      try {
+        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a specialized Multimodal Educational Knowledge Base Ingestion Engine. Output valid raw JSON only, strictly matching the user document content without hallucinations or placeholder concepts.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.2,
+            max_tokens: tokenLimit
+          })
         });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
+        }
+
+        const data = await response.json();
+        let content = data.choices?.[0]?.message?.content || '';
+        if (!content && data.choices?.[0]?.message?.reasoning) {
+          const r = data.choices[0].message.reasoning;
+          if (r.includes('{') && r.includes('}')) content = r;
+        }
+        const parsed = safeParseLLMJson(content || '{}');
+
+        // Pastikan output memiliki array topics
+        if (!parsed.topics || !Array.isArray(parsed.topics) || parsed.topics.length === 0) {
+          if (parsed.topicTitle) {
+            parsed.topics = [
+              {
+                code: 'TOPIK 01',
+                title: parsed.topicTitle,
+                prerequisites: parsed.prerequisites || 'Fondasi Materi',
+                sourceCitation: parsed.sourceCitation || (fileType === 'pdf' ? `📄 ${fileName} (Hal. 1 - ${detectedPages})` : fileType === 'video' ? `🎥 ${fileName} (00:00 - ${detectedDuration}:00)` : `📊 ${fileName} (Slide 1 - ${detectedSlides})`),
+                chunksCount: parsed.chunksCount || 20,
+                diagramCount: parsed.diagramCount || 2,
+                diagramInsight: parsed.diagramInsight || 'Ekstraksi representasi multimodal terstruktur.',
+                keyConcepts: parsed.keyConcepts || ['Konsep Dasar', 'Penerapan']
+              }
+            ];
+          }
+        }
+
+        // Pastikan integritas sitasi sesuai tipe berkas riil
+        if (Array.isArray(parsed.topics)) {
+          parsed.topics = parsed.topics.map((t, idx) => {
+            let cit = t.sourceCitation || '';
+            if (fileType === 'video') {
+              if (!cit.includes('🎥') || cit.includes('Hal.') || cit.includes('Slide')) {
+                const startM = String(idx * 15).padStart(2, '0') + ':00';
+                const endM = String(Math.min(detectedDuration, (idx + 1) * 15)).padStart(2, '0') + ':00';
+                cit = `🎥 ${fileName} (${startM} - ${endM})`;
+              }
+            } else if (fileType === 'slide') {
+              if (!cit.includes('📊') || cit.includes('Hal.')) {
+                const s1 = idx * 10 + 1;
+                const s2 = Math.min(detectedSlides, (idx + 1) * 10);
+                cit = `📊 ${fileName} (Slide ${s1} - ${s2})`;
+              }
+            }
+            return {
+              ...t,
+              sourceCitation: cit
+            };
+          });
+        }
+
+        // Pastikan totalPages, totalDurationMinutes, totalSlides terisi dengan benar
+        parsed.totalPages = parsed.totalPages || detectedPages;
+        parsed.totalDurationMinutes = parsed.totalDurationMinutes || detectedDuration;
+        parsed.totalSlides = parsed.totalSlides || detectedSlides;
+
+        return {
+          success: true,
+          modelUsed: model,
+          keyUsed: keyIdx + 1,
+          data: parsed
+        };
+      } catch (err) {
+        console.warn(`[Groq Ingestion Failover] Model ${model} pada ${keyLabel} gagal:`, err.message);
+        lastError = err;
       }
-
-      // Pastikan totalPages, totalDurationMinutes, totalSlides terisi dengan benar
-      parsed.totalPages = parsed.totalPages || detectedPages;
-      parsed.totalDurationMinutes = parsed.totalDurationMinutes || detectedDuration;
-      parsed.totalSlides = parsed.totalSlides || detectedSlides;
-
-      return {
-        success: true,
-        modelUsed: model,
-        data: parsed
-      };
-    } catch (err) {
-      console.warn(`Model ${model} failed:`, err.message);
-      lastError = err;
     }
   }
 
-  throw new Error(`Semua model Groq gagal memproses: ${lastError?.message}`);
+  throw new Error(`Semua API Key dan model Groq gagal memproses ingestion: ${lastError?.message}`);
 }
 
 // Server-side Tutor Chat handler for Track D (Req 2)
@@ -530,6 +553,11 @@ ${contextStr}`;
     { role: 'user', content: question }
   ];
 
+  const availableKeys = extractGroqKeys(apiKey);
+  if (availableKeys.length === 0) {
+    throw new Error('Tidak ada API Key Groq yang tersedia. Harap isi GROQ_API_KEY di .env atau environment server.');
+  }
+
   const modelsToTry = [
     'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
@@ -537,62 +565,69 @@ ${contextStr}`;
   ];
   let lastError = null;
 
-  for (const model of modelsToTry) {
-    try {
-      const tokenLimit = model.includes('qwen') ? 950 : 2500;
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: messages,
-          temperature: 0.3,
-          max_tokens: tokenLimit
-        })
-      });
+  for (let keyIdx = 0; keyIdx < availableKeys.length; keyIdx++) {
+    const currentApiKey = availableKeys[keyIdx];
+    const keyLabel = `Key #${keyIdx + 1} (...${currentApiKey.slice(-6)})`;
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq status ${response.status}`);
-      }
-
-      const data = await response.json();
-      let reply = data.choices?.[0]?.message?.content || '';
-      if (!reply && data.choices?.[0]?.message?.reasoning) {
-        reply = data.choices[0].message.reasoning;
-      }
-      if (!reply) reply = 'Maaf, jawaban tidak dapat dibuat.';
-
-      // Jika materi HANYA berupa rekaman video, bersihkan halusinasi halaman atau slide
-      if (hasVideo && !hasPdf && !hasSlide) {
-        reply = reply
-          .replace(/\[(?:📄\s*)?(?:Hal\.?|Halaman)\s*(\d+)\]/gi, (match, p1) => {
-            const min = parseInt(p1, 10);
-            return `[🎥 ${String(min).padStart(2, '0')}:00]`;
+    for (const model of modelsToTry) {
+      try {
+        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: messages,
+            temperature: 0.3,
+            max_tokens: tokenLimit
           })
-          .replace(/\[(?:🖥️\s*|📊\s*)?Slide\s*#?(\d+)\]/gi, (match, p1) => {
-            const min = parseInt(p1, 10);
-            return `[🎥 ${String(min).padStart(2, '0')}:00]`;
-          })
-          .replace(/Buku Teks[^.\n]*?[–-][^.\n]*?(?:hal\.?|halaman)\s*\d+[^.\n]*/gi, '')
-          .replace(/\(hal\.?\s*\d+(?:\s*-\s*\d+)?\)/gi, '')
-          .replace(/pada slide\s*\d+/gi, 'pada rekaman video');
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
+        }
+
+        const data = await response.json();
+        let reply = data.choices?.[0]?.message?.content || '';
+        if (!reply && data.choices?.[0]?.message?.reasoning) {
+          reply = data.choices[0].message.reasoning;
+        }
+        if (!reply) reply = 'Maaf, jawaban tidak dapat dibuat.';
+
+        // Jika materi HANYA berupa rekaman video, bersihkan halusinasi halaman atau slide
+        if (hasVideo && !hasPdf && !hasSlide) {
+          reply = reply
+            .replace(/\[(?:📄\s*)?(?:Hal\.?|Halaman)\s*(\d+)\]/gi, (match, p1) => {
+              const min = parseInt(p1, 10);
+              return `[🎥 ${String(min).padStart(2, '0')}:00]`;
+            })
+            .replace(/\[(?:🖥️\s*|📊\s*)?Slide\s*#?(\d+)\]/gi, (match, p1) => {
+              const min = parseInt(p1, 10);
+              return `[🎥 ${String(min).padStart(2, '0')}:00]`;
+            })
+            .replace(/Buku Teks[^.\n]*?[–-][^.\n]*?(?:hal\.?|halaman)\s*\d+[^.\n]*/gi, '')
+            .replace(/\(hal\.?\s*\d+(?:\s*-\s*\d+)?\)/gi, '')
+            .replace(/pada slide\s*\d+/gi, 'pada rekaman video');
+        }
+
+        return {
+          success: true,
+          modelUsed: model,
+          keyUsed: keyIdx + 1,
+          reply: reply
+        };
+      } catch (err) {
+        console.warn(`[Groq Tutor Failover] ${model} pada ${keyLabel} gagal:`, err.message);
+        lastError = err;
       }
-      
-      return {
-        success: true,
-        modelUsed: model,
-        reply: reply
-      };
-    } catch (err) {
-      lastError = err;
     }
   }
 
-  throw new Error(`Semua model Groq gagal menjawab tutor: ${lastError?.message}`);
+  throw new Error(`Semua API Key dan model Groq gagal menjawab tutor: ${lastError?.message}`);
 }
 
 export const handleGroqTutorChat = handleGroqTutor;
@@ -893,6 +928,7 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
   ]
 }`;
 
+  const availableKeys = extractGroqKeys(apiKey);
   const modelsToTry = [
     'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
@@ -900,181 +936,188 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
   ];
   let lastError = null;
 
-  for (const model of modelsToTry) {
-    try {
-      const tokenLimit = model.includes('qwen') ? 950 : 2500;
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an Adaptive Assessment Engine for higher education. Output strictly valid raw JSON only without markdown codeblocks or apologies.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: tokenLimit
-        })
-      });
+  for (let keyIdx = 0; keyIdx < availableKeys.length; keyIdx++) {
+    const currentApiKey = availableKeys[keyIdx];
+    const keyLabel = `Key #${keyIdx + 1} (...${currentApiKey.slice(-6)})`;
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq status ${response.status}`);
-      }
+    for (const model of modelsToTry) {
+      try {
+        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an Adaptive Assessment Engine for higher education. Output strictly valid raw JSON only without markdown codeblocks or apologies.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.3,
+            max_tokens: tokenLimit
+          })
+        });
 
-      const data = await response.json();
-      let content = data.choices?.[0]?.message?.content || '';
-      if (!content && data.choices?.[0]?.message?.reasoning) {
-        const r = data.choices[0].message.reasoning;
-        if (r.includes('{') && r.includes('}')) content = r;
-      }
-      const parsed = safeParseLLMJson(content || '{}');
-
-      let questionList = Array.isArray(parsed.questions) ? parsed.questions : (Array.isArray(parsed) ? parsed : []);
-
-      if (questionList.length === 0 && parsed.question) {
-        questionList = [parsed];
-      }
-
-      function cleanMathNoise(txt) {
-        if (!txt) return '';
-        return String(txt)
-          .replace(/\x0c/g, '\\f')
-          .replace(/\x08/g, '\\b')
-          .replace(/[\$%#\?\/]{4,}/g, '') // Bersihkan pola noise atau karakter rusak acak
-          .trim();
-      }
-
-      // Pastikan integritas setiap butir soal dan validitas sitasi
-      questionList = questionList.map((q, idx) => {
-        const qId = q.id || `q_groq_${Date.now()}_${idx + 1}`;
-        const qType = (q.type && ['mcq', 'num', 'short'].includes(q.type.toLowerCase())) ? q.type.toLowerCase() : 'mcq';
-        const qTopic = q.topic || targetTopicList[idx % targetTopicList.length] || 'Materi Kuliah';
-        const qDiff = q.difficulty || 'Medium (0.60)';
-        let qSource = q.source || `📖 Materi ${courseName}`;
-        let qQuestion = cleanMathNoise(q.question) || 'Pertanyaan ujian materi.';
-        let qExplanation = cleanMathNoise(q.explanation) || 'Jawaban didasarkan pada konsep resmi materi perkuliahan.';
-
-        // Jika materi adalah video: Verifikasi dan sinkronkan timestamp agar tidak tertahan di 00:00 atau 00.00
-        if (hasVideo && allVideoSegments.length > 0) {
-          const combinedQText = (qQuestion + ' ' + qExplanation + ' ' + (q.options || []).join(' ')).toLowerCase();
-
-          // Cari segmen video yang paling cocok dengan teks soal/penjelasan
-          let bestSeg = null;
-          let bestScore = 0;
-
-          allVideoSegments.forEach(seg => {
-            if (!seg.text) return;
-            const words = seg.text.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
-            let score = 0;
-            words.forEach(w => {
-              if (combinedQText.includes(w)) score++;
-            });
-            if (score > bestScore) {
-              bestScore = score;
-              bestSeg = seg;
-            }
-          });
-
-          // Jika segmen yang cocok adalah 00:00 atau tidak ada keyword tajam, cari segmen berikutnya yang > 00:00
-          const nonZeroSegments = allVideoSegments.filter(s => s.timestamp && s.timestamp !== '00:00' && s.timestamp !== '00.00');
-
-          if (!bestSeg || bestScore < 2 || bestSeg.timestamp === '00:00' || bestSeg.timestamp === '00.00') {
-            if (nonZeroSegments.length > 0) {
-              const segIdx = Math.min(idx, nonZeroSegments.length - 1);
-              bestSeg = nonZeroSegments[segIdx];
-            } else {
-              const segIdx = Math.min(idx, allVideoSegments.length - 1);
-              bestSeg = allVideoSegments[segIdx];
-            }
-          }
-
-          if (bestSeg && bestSeg.timestamp) {
-            let detectedTs = (bestSeg.timestamp && bestSeg.timestamp !== '00:00' && bestSeg.timestamp !== '00.00')
-              ? bestSeg.timestamp
-              : ((bestSeg.endTimestamp && bestSeg.endTimestamp !== '00:00' && bestSeg.endTimestamp !== '00.00')
-                  ? bestSeg.endTimestamp
-                  : (nonZeroSegments[0]?.timestamp || `${String(Math.max(1, idx + 1)).padStart(2, '0')}:15`));
-
-            detectedTs = String(detectedTs).replace('.', ':');
-
-            // Periksa apakah qSource masih 00:00 / 00.00 atau belum berformat video timestamp
-            const isZeroTs = qSource.includes('00:00') || qSource.includes('00.00') || !/(\d{1,2}[:.]\d{2})/.test(qSource);
-            if (isZeroTs && detectedTs) {
-              const videoFileName = bestSeg.fileName || filesList.find(f => f.type === 'video')?.name || 'Video Kuliah';
-              qSource = `🎥 ${videoFileName} (${detectedTs})`;
-            } else if (qSource) {
-              qSource = qSource.replace(/00[:.]00/g, detectedTs);
-            }
-
-            // Bersihkan teks pertanyaan dari frasa kaku "pada menit 00:00" atau "pada menit 00.00"
-            qQuestion = qQuestion
-              .replace(/(?:berdasarkan\s+(?:penjelasan|materi|rekaman|video|kuliah)?\s*)?(?:pada\s+)?(?:menit|durasi|timestamp)\s*00[:.]00\s*,?\s*/gi, '')
-              .replace(/(?:dalam\s+(?:penjelasan|materi|rekaman|video|kuliah)?\s*)?(?:pada\s+)?(?:menit|durasi|timestamp)\s*00[:.]00\s*,?\s*/gi, '')
-              .replace(/\(?(?:menit|durasi)\s*00[:.]00\)?/gi, '')
-              .replace(/\s{2,}/g, ' ')
-              .trim();
-
-            if (!qQuestion.endsWith('?')) {
-              qQuestion += '?';
-            }
-
-            // Perbaiki frasa "Pada menit 00:00" / "00.00" di penjelasan dengan timestamp yang nyata
-            if (detectedTs && detectedTs !== '00:00') {
-              qExplanation = qExplanation.replace(/(?:pada\s+)?(?:menit|durasi)\s*00[:.]00/gi, `pada rekaman video menit ${detectedTs}`);
-              qExplanation = qExplanation.replace(/00[:.]00/g, detectedTs);
-            }
-          }
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
         }
 
-        let cleanOpts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Opsi A', 'Opsi B', 'Opsi C', 'Opsi D'];
-        let correctIdx = typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < cleanOpts.length
-          ? q.correctOptionIndex
-          : 0;
+        const data = await response.json();
+        let content = data.choices?.[0]?.message?.content || '';
+        if (!content && data.choices?.[0]?.message?.reasoning) {
+          const r = data.choices[0].message.reasoning;
+          if (r.includes('{') && r.includes('}')) content = r;
+        }
+        const parsed = safeParseLLMJson(content || '{}');
 
-        let sanitizedOpts = cleanOpts.map(o => cleanMathNoise(o));
+        let questionList = Array.isArray(parsed.questions) ? parsed.questions : (Array.isArray(parsed) ? parsed : []);
 
-        return {
-          id: qId,
-          topic: cleanMathNoise(qTopic),
-          type: qType,
-          difficulty: qDiff,
-          source: qSource,
-          question: qQuestion,
-          hint: cleanMathNoise(q.hint) || '💡 Perhatikan prinsip dasar materi yang telah dipelajari.',
-          options: sanitizedOpts,
-          correctOptionIndex: correctIdx,
-          correctNumber: typeof q.correctNumber === 'number' ? q.correctNumber : (parseFloat(q.correctNumber) || 0),
-          tolerance: typeof q.tolerance === 'number' ? q.tolerance : 0,
-          unit: cleanMathNoise(q.unit) || 'Unit',
-          correctKeywords: Array.isArray(q.correctKeywords) && q.correctKeywords.length > 0 ? q.correctKeywords.map(k => cleanMathNoise(k)) : [String(q.correctAnswer || '').toLowerCase().trim()].filter(Boolean),
-          explanation: qExplanation,
-          misconception: cleanMathNoise(q.misconception) || '⚠️ Miskonsepsi: Kekeliruan dalam memahami batasan rumus atau konsep prasyarat.'
-        };
-      });
+        if (questionList.length === 0 && parsed.question) {
+          questionList = [parsed];
+        }
 
-      if (questionList.length > 0) {
-        return {
-          success: true,
-          modelUsed: model,
-          questions: questionList
-        };
+        function cleanMathNoise(txt) {
+          if (!txt) return '';
+          return String(txt)
+            .replace(/\x0c/g, '\\f')
+            .replace(/\x08/g, '\\b')
+            .replace(/[\$%#\?\/]{4,}/g, '') // Bersihkan pola noise atau karakter rusak acak
+            .trim();
+        }
+
+        // Pastikan integritas setiap butir soal dan validitas sitasi
+        questionList = questionList.map((q, idx) => {
+          const qId = q.id || `q_groq_${Date.now()}_${idx + 1}`;
+          const qType = (q.type && ['mcq', 'num', 'short'].includes(q.type.toLowerCase())) ? q.type.toLowerCase() : 'mcq';
+          const qTopic = q.topic || targetTopicList[idx % targetTopicList.length] || 'Materi Kuliah';
+          const qDiff = q.difficulty || 'Medium (0.60)';
+          let qSource = q.source || `📖 Materi ${courseName}`;
+          let qQuestion = cleanMathNoise(q.question) || 'Pertanyaan ujian materi.';
+          let qExplanation = cleanMathNoise(q.explanation) || 'Jawaban didasarkan pada konsep resmi materi perkuliahan.';
+
+          // Jika materi adalah video: Verifikasi dan sinkronkan timestamp agar tidak tertahan di 00:00 atau 00.00
+          if (hasVideo && allVideoSegments.length > 0) {
+            const combinedQText = (qQuestion + ' ' + qExplanation + ' ' + (q.options || []).join(' ')).toLowerCase();
+
+            // Cari segmen video yang paling cocok dengan teks soal/penjelasan
+            let bestSeg = null;
+            let bestScore = 0;
+
+            allVideoSegments.forEach(seg => {
+              if (!seg.text) return;
+              const words = seg.text.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+              let score = 0;
+              words.forEach(w => {
+                if (combinedQText.includes(w)) score++;
+              });
+              if (score > bestScore) {
+                bestScore = score;
+                bestSeg = seg;
+              }
+            });
+
+            // Jika segmen yang cocok adalah 00:00 atau tidak ada keyword tajam, cari segmen berikutnya yang > 00:00
+            const nonZeroSegments = allVideoSegments.filter(s => s.timestamp && s.timestamp !== '00:00' && s.timestamp !== '00.00');
+
+            if (!bestSeg || bestScore < 2 || bestSeg.timestamp === '00:00' || bestSeg.timestamp === '00.00') {
+              if (nonZeroSegments.length > 0) {
+                const segIdx = Math.min(idx, nonZeroSegments.length - 1);
+                bestSeg = nonZeroSegments[segIdx];
+              } else {
+                const segIdx = Math.min(idx, allVideoSegments.length - 1);
+                bestSeg = allVideoSegments[segIdx];
+              }
+            }
+
+            if (bestSeg && bestSeg.timestamp) {
+              let detectedTs = (bestSeg.timestamp && bestSeg.timestamp !== '00:00' && bestSeg.timestamp !== '00.00')
+                ? bestSeg.timestamp
+                : ((bestSeg.endTimestamp && bestSeg.endTimestamp !== '00:00' && bestSeg.endTimestamp !== '00.00')
+                    ? bestSeg.endTimestamp
+                    : (nonZeroSegments[0]?.timestamp || `${String(Math.max(1, idx + 1)).padStart(2, '0')}:15`));
+
+              detectedTs = String(detectedTs).replace('.', ':');
+
+              // Periksa apakah qSource masih 00:00 / 00.00 atau belum berformat video timestamp
+              const isZeroTs = qSource.includes('00:00') || qSource.includes('00.00') || !/(\d{1,2}[:.]\d{2})/.test(qSource);
+              if (isZeroTs && detectedTs) {
+                const videoFileName = bestSeg.fileName || filesList.find(f => f.type === 'video')?.name || 'Video Kuliah';
+                qSource = `🎥 ${videoFileName} (${detectedTs})`;
+              } else if (qSource) {
+                qSource = qSource.replace(/00[:.]00/g, detectedTs);
+              }
+
+              // Bersihkan teks pertanyaan dari frasa kaku "pada menit 00:00" atau "pada menit 00.00"
+              qQuestion = qQuestion
+                .replace(/(?:berdasarkan\s+(?:penjelasan|materi|rekaman|video|kuliah)?\s*)?(?:pada\s+)?(?:menit|durasi|timestamp)\s*00[:.]00\s*,?\s*/gi, '')
+                .replace(/(?:dalam\s+(?:penjelasan|materi|rekaman|video|kuliah)?\s*)?(?:pada\s+)?(?:menit|durasi|timestamp)\s*00[:.]00\s*,?\s*/gi, '')
+                .replace(/\(?(?:menit|durasi)\s*00[:.]00\)?/gi, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+              if (!qQuestion.endsWith('?')) {
+                qQuestion += '?';
+              }
+
+              // Perbaiki frasa "Pada menit 00:00" / "00.00" di penjelasan dengan timestamp yang nyata
+              if (detectedTs && detectedTs !== '00:00') {
+                qExplanation = qExplanation.replace(/(?:pada\s+)?(?:menit|durasi)\s*00[:.]00/gi, `pada rekaman video menit ${detectedTs}`);
+                qExplanation = qExplanation.replace(/00[:.]00/g, detectedTs);
+              }
+            }
+          }
+
+          let cleanOpts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['Opsi A', 'Opsi B', 'Opsi C', 'Opsi D'];
+          let correctIdx = typeof q.correctOptionIndex === 'number' && q.correctOptionIndex >= 0 && q.correctOptionIndex < cleanOpts.length
+            ? q.correctOptionIndex
+            : 0;
+
+          let sanitizedOpts = cleanOpts.map(o => cleanMathNoise(o));
+
+          return {
+            id: qId,
+            topic: cleanMathNoise(qTopic),
+            type: qType,
+            difficulty: qDiff,
+            source: qSource,
+            question: qQuestion,
+            hint: cleanMathNoise(q.hint) || '💡 Perhatikan prinsip dasar materi yang telah dipelajari.',
+            options: sanitizedOpts,
+            correctOptionIndex: correctIdx,
+            correctNumber: typeof q.correctNumber === 'number' ? q.correctNumber : (parseFloat(q.correctNumber) || 0),
+            tolerance: typeof q.tolerance === 'number' ? q.tolerance : 0,
+            unit: cleanMathNoise(q.unit) || 'Unit',
+            correctKeywords: Array.isArray(q.correctKeywords) && q.correctKeywords.length > 0 ? q.correctKeywords.map(k => cleanMathNoise(k)) : [String(q.correctAnswer || '').toLowerCase().trim()].filter(Boolean),
+            explanation: qExplanation,
+            misconception: cleanMathNoise(q.misconception) || '⚠️ Miskonsepsi: Kekeliruan dalam memahami batasan rumus atau konsep prasyarat.'
+          };
+        });
+
+        if (questionList.length > 0) {
+          return {
+            success: true,
+            modelUsed: model,
+            keyUsed: keyIdx + 1,
+            questions: questionList
+          };
+        }
+      } catch (err) {
+        console.warn(`[Groq Quiz Failover] ${model} pada ${keyLabel} gagal:`, err.message);
+        lastError = err;
       }
-    } catch (err) {
-      lastError = err;
     }
   }
 
-  // Jika seluruh model Groq mencapai batas kuota rate limit atau tidak tersedia:
+  // Jika seluruh model Groq dan semua API key mencapai batas kuota rate limit atau tidak tersedia:
   // Gunakan generator adaptif berbasis sumber grounded dokumen resmi (Track D Req 3)
   const fallbackQuestions = generateGroundedFallbackQuestions({
     courseName,
@@ -1103,49 +1146,67 @@ export async function handleGroqAudioTranscription(fileBuffer, fileName, mimeTyp
   const effectiveName = fileName || 'lecture_audio.wav';
   const blob = new Blob([fileBuffer], { type: effectiveMime });
 
-  const formData = new FormData();
-  formData.append('file', blob, effectiveName);
-  formData.append('model', 'whisper-large-v3-turbo');
-  formData.append('response_format', 'verbose_json');
-  formData.append('temperature', '0');
-
-  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: formData
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq Whisper error (${response.status}): ${errText}`);
+  const availableKeys = extractGroqKeys(apiKey);
+  if (availableKeys.length === 0) {
+    throw new Error('Tidak ada API Key Groq yang tersedia untuk transkripsi audio.');
   }
 
-  const data = await response.json();
-  const rawSegments = Array.isArray(data.segments) ? data.segments : [];
+  let lastError = null;
 
-  const formattedSegments = rawSegments.map((s, idx) => {
-    const startSec = Math.floor(s.start || 0);
-    const endSec = Math.ceil(s.end || (startSec + 5));
-    const startM = String(Math.floor(startSec / 60)).padStart(2, '0') + ':' + String(startSec % 60).padStart(2, '0');
-    const endM = String(Math.floor(endSec / 60)).padStart(2, '0') + ':' + String(endSec % 60).padStart(2, '0');
-    return {
-      id: idx + 1,
-      start: s.start,
-      end: s.end,
-      timestamp: startM,
-      endTimestamp: endM,
-      text: (s.text || '').trim()
-    };
-  });
+  for (let keyIdx = 0; keyIdx < availableKeys.length; keyIdx++) {
+    const currentApiKey = availableKeys[keyIdx];
+    const keyLabel = `Key #${keyIdx + 1} (...${currentApiKey.slice(-6)})`;
 
-  return {
-    success: true,
-    fullText: data.text || '',
-    duration: data.duration || (formattedSegments.length > 0 ? formattedSegments[formattedSegments.length - 1].end : 0),
-    segments: formattedSegments
-  };
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, effectiveName);
+      formData.append('model', 'whisper-large-v3-turbo');
+      formData.append('response_format', 'verbose_json');
+      formData.append('temperature', '0');
+
+      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentApiKey}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq Whisper error (${response.status}) pada ${keyLabel}: ${errText.slice(0, 150)}`);
+      }
+
+      const data = await response.json();
+      const rawSegments = Array.isArray(data.segments) ? data.segments : [];
+
+      const formattedSegments = rawSegments.map((s, idx) => {
+        const startSec = Math.floor(s.start || 0);
+        const endSec = Math.ceil(s.end || (startSec + 5));
+        const startM = String(Math.floor(startSec / 60)).padStart(2, '0') + ':' + String(startSec % 60).padStart(2, '0');
+        const endM = String(Math.floor(endSec / 60)).padStart(2, '0') + ':' + String(endSec % 60).padStart(2, '0');
+        return {
+          id: idx + 1,
+          start: s.start,
+          end: s.end,
+          timestamp: startM,
+          endTimestamp: endM,
+          text: (s.text || '').trim()
+        };
+      });
+
+      return {
+        success: true,
+        keyUsed: keyIdx + 1,
+        fullText: data.text || '',
+        duration: data.duration || (formattedSegments.length > 0 ? formattedSegments[formattedSegments.length - 1].end : 0),
+        segments: formattedSegments
+      };
+    } catch (err) {
+      console.warn(`[Groq Whisper Failover] ${keyLabel} gagal:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw new Error(`Semua API Key Groq gagal mentranskripsi audio: ${lastError?.message}`);
 }
-
-

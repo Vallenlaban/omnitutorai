@@ -5,7 +5,15 @@ import { handleGroqIngestion, handleGroqTutorChat, handleGroqQuizGeneration, han
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const GROQ_API_KEY = env.GROQ_API_KEY || process.env.GROQ_API_KEY || '';
+  const GROQ_API_KEYS = [
+    env.GROQ_API_KEY,
+    env.GROQ_API_KEY_2,
+    env.GROQ_API_KEY_SECONDARY,
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_SECONDARY,
+    ...((env.GROQ_API_KEYS || process.env.GROQ_API_KEYS || '').split(','))
+  ].map(k => (k || '').trim()).filter(Boolean);
 
   return {
     server: {
@@ -25,7 +33,7 @@ export default defineConfig(({ mode }) => {
               req.on('end', async () => {
                 try {
                   const body = JSON.parse(bodyStr || '{}');
-                  const result = await handleGroqIngestion(body, GROQ_API_KEY);
+                  const result = await handleGroqIngestion(body, GROQ_API_KEYS);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify(result));
                 } catch (err: any) {
@@ -43,7 +51,7 @@ export default defineConfig(({ mode }) => {
               req.on('end', async () => {
                 try {
                   const body = JSON.parse(bodyStr || '{}');
-                  const result = await handleGroqTutorChat(body, GROQ_API_KEY);
+                  const result = await handleGroqTutorChat(body, GROQ_API_KEYS);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify(result));
                 } catch (err: any) {
@@ -61,7 +69,7 @@ export default defineConfig(({ mode }) => {
               req.on('end', async () => {
                 try {
                   const body = JSON.parse(bodyStr || '{}');
-                  const result = await handleGroqQuizGeneration(body, GROQ_API_KEY);
+                  const result = await handleGroqQuizGeneration(body, GROQ_API_KEYS);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify(result));
                 } catch (err: any) {
@@ -83,7 +91,7 @@ export default defineConfig(({ mode }) => {
                   try { fileName = decodeURIComponent(rawFileName); } catch (e) { fileName = rawFileName; }
                   const mimeType = (req.headers['content-type'] as string) || 'audio/wav';
                   const buffer = Buffer.concat(chunks);
-                  const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, GROQ_API_KEY);
+                  const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, GROQ_API_KEYS);
                   res.writeHead(200, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify(result));
                 } catch (err: any) {
@@ -97,7 +105,12 @@ export default defineConfig(({ mode }) => {
 
             if (req.url === '/api/health' && req.method === 'GET') {
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'ok', provider: 'Groq Cloud', hasKey: !!GROQ_API_KEY }));
+              res.end(JSON.stringify({
+                status: 'ok',
+                provider: 'Groq Cloud',
+                totalKeys: GROQ_API_KEYS.length,
+                hasBackupKey: GROQ_API_KEYS.length > 1
+              }));
               return;
             }
 
