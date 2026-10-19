@@ -178,108 +178,118 @@ function serveStaticFile(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = urlObj.pathname;
+  try {
+    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = urlObj.pathname;
 
-  // Handle CORS Preflight
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, x-file-name, Authorization'
-    });
-    res.end();
-    return;
-  }
-
-  // API Endpoints
-  if (pathname === '/api/health' && req.method === 'GET') {
-    const activeKeys = getLoadedGroqKeys(req);
-    sendJson(res, 200, {
-      status: 'ok',
-      platform: 'Railway / Production',
-      groqConfigured: activeKeys.length > 0,
-      totalGroqKeys: activeKeys.length,
-      keysMasked: activeKeys.map((k, i) => `Key #${i + 1}: ${k.slice(0, 7)}...${k.slice(-4)} (panjang: ${k.length})`),
-      hasBackupKey: activeKeys.length > 1,
-      modelsSupported: [
-        'openai/gpt-oss-20b',
-        'openai/gpt-oss-120b',
-        'qwen/qwen3.8-27b'
-      ],
-      timestamp: new Date().toISOString()
-    });
-    return;
-  }
-
-  if (pathname === '/api/ingest' && req.method === 'POST') {
-    try {
-      const activeKeys = getLoadedGroqKeys(req);
-      console.log(`[API /api/ingest] Request diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
-      const body = await parseJsonBody(req);
-      const result = await handleGroqIngestion(body, activeKeys);
-      sendJson(res, 200, result);
-    } catch (err) {
-      console.error('API /api/ingest error:', err);
-      sendJson(res, 500, { success: false, error: err?.message || 'Ingestion failed' });
+    // Handle CORS Preflight
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, x-file-name, Authorization'
+      });
+      res.end();
+      return;
     }
-    return;
-  }
 
-  if (pathname === '/api/tutor' && req.method === 'POST') {
-    try {
+    // API Endpoints
+    if (pathname === '/api/health' && req.method === 'GET') {
       const activeKeys = getLoadedGroqKeys(req);
-      console.log(`[API /api/tutor] Request tutor chat diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
-      const body = await parseJsonBody(req);
-      const result = await handleGroqTutorChat(body, activeKeys);
-      sendJson(res, 200, result);
-    } catch (err) {
-      console.error('API /api/tutor error:', err);
-      sendJson(res, 500, { success: false, error: err?.message || 'Tutor failed' });
+      sendJson(res, 200, {
+        status: 'ok',
+        platform: 'Railway / Production',
+        groqConfigured: activeKeys.length > 0,
+        totalGroqKeys: activeKeys.length,
+        keysMasked: activeKeys.map((k, i) => `Key #${i + 1}: ${k.slice(0, 7)}...${k.slice(-4)} (panjang: ${k.length})`),
+        hasBackupKey: activeKeys.length > 1,
+        modelsSupported: [
+          'openai/gpt-oss-20b',
+          'openai/gpt-oss-120b',
+          'qwen/qwen3.8-27b'
+        ],
+        timestamp: new Date().toISOString()
+      });
+      return;
     }
-    return;
-  }
 
-  if (pathname === '/api/quiz' && req.method === 'POST') {
+    if (pathname === '/api/ingest' && req.method === 'POST') {
+      try {
+        const activeKeys = getLoadedGroqKeys(req);
+        console.log(`[API /api/ingest] Request diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
+        const body = await parseJsonBody(req);
+        const result = await handleGroqIngestion(body, activeKeys);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('API /api/ingest error:', err);
+        sendJson(res, 500, { success: false, error: err?.message || 'Ingestion failed' });
+      }
+      return;
+    }
+
+    if (pathname === '/api/tutor' && req.method === 'POST') {
+      try {
+        const activeKeys = getLoadedGroqKeys(req);
+        console.log(`[API /api/tutor] Request tutor chat diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
+        const body = await parseJsonBody(req);
+        const result = await handleGroqTutorChat(body, activeKeys);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('API /api/tutor error:', err);
+        sendJson(res, 500, { success: false, error: err?.message || 'Tutor failed' });
+      }
+      return;
+    }
+
+    if (pathname === '/api/quiz' && req.method === 'POST') {
+      try {
+        const activeKeys = getLoadedGroqKeys(req);
+        console.log(`[API /api/quiz] Request quiz generation diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
+        const body = await parseJsonBody(req);
+        const result = await handleGroqQuizGeneration(body, activeKeys);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('API /api/quiz error:', err);
+        sendJson(res, 500, { success: false, error: err?.message || 'Quiz generation failed' });
+      }
+      return;
+    }
+
+    if (pathname === '/api/transcribe-video' && req.method === 'POST') {
+      try {
+        const activeKeys = getLoadedGroqKeys(req);
+        const rawFileName = req.headers['x-file-name'] || 'audio.wav';
+        let fileName = 'audio.wav';
+        try { fileName = decodeURIComponent(rawFileName); } catch (e) { fileName = rawFileName; }
+        const mimeType = req.headers['content-type'] || 'audio/wav';
+        const buffer = await getRawBodyBuffer(req);
+
+        const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, activeKeys);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('API /api/transcribe-video error:', err);
+        sendJson(res, 500, { success: false, error: err?.message || 'Transcription failed' });
+      }
+      return;
+    }
+
+    // Serve static assets from production dist or root
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      serveStaticFile(req, res, pathname);
+      return;
+    }
+
+    res.writeHead(405, { 'Content-Type': 'text/plain' });
+    res.end('Method Not Allowed');
+  } catch (fatalErr) {
+    console.error('💥 Fatal Server Request Error:', fatalErr);
     try {
-      const activeKeys = getLoadedGroqKeys(req);
-      console.log(`[API /api/quiz] Request quiz generation diterima. Jumlah kunci Groq terdeteksi: ${activeKeys.length}`);
-      const body = await parseJsonBody(req);
-      const result = await handleGroqQuizGeneration(body, activeKeys);
-      sendJson(res, 200, result);
-    } catch (err) {
-      console.error('API /api/quiz error:', err);
-      sendJson(res, 500, { success: false, error: err?.message || 'Quiz generation failed' });
+      sendJson(res, 500, { success: false, error: fatalErr?.message || 'Internal Server Error' });
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
     }
-    return;
   }
-
-  if (pathname === '/api/transcribe-video' && req.method === 'POST') {
-    try {
-      const activeKeys = getLoadedGroqKeys(req);
-      const rawFileName = req.headers['x-file-name'] || 'audio.wav';
-      let fileName = 'audio.wav';
-      try { fileName = decodeURIComponent(rawFileName); } catch (e) { fileName = rawFileName; }
-      const mimeType = req.headers['content-type'] || 'audio/wav';
-      const buffer = await getRawBodyBuffer(req);
-
-      const result = await handleGroqAudioTranscription(buffer, fileName, mimeType, activeKeys);
-      sendJson(res, 200, result);
-    } catch (err) {
-      console.error('API /api/transcribe-video error:', err);
-      sendJson(res, 500, { success: false, error: err?.message || 'Transcription failed' });
-    }
-    return;
-  }
-
-  // Serve static assets from production dist or root
-  if (req.method === 'GET' || req.method === 'HEAD') {
-    serveStaticFile(req, res, pathname);
-    return;
-  }
-
-  res.writeHead(405, { 'Content-Type': 'text/plain' });
-  res.end('Method Not Allowed');
 });
 
 server.listen(PORT, '0.0.0.0', () => {
