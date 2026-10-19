@@ -180,50 +180,92 @@ export function extractGroqKeys(apiKeysInput) {
   return [...new Set(parsedKeys)];
 }
 
-// Helper cerdas pemilihan konteks berbobot relevansi kata kunci dengan batas aman token Groq (TPM-Safe)
-function selectRelevantContext({ knowledgeBaseContext, documentExcerpts, fullDocumentContent, query = '', maxChars = 5200 }) {
-  let out = '\nBASIS PENGETAHUAN RESMI DOSEN (GROUNDED KNOWLEDGE BASE):\n';
+// Helper cerdas RAG: Dynamic Multi-Page/Video Chunking & Semantic Window Retrieval
+// Menangani berkas PDF tebal (puluhan/ratusan halaman), puluhan slide, dan video kuliah panjang
+// dengan tetap mematuhi batas ketat Groq Cloud on-demand TPM (Tokens Per Minute).
+function selectRelevantContext({ knowledgeBaseContext, documentExcerpts, fullDocumentContent, query = '', maxChars = 1900 }) {
+  let out = 'BASIS PENGETAHUAN RESMI DOSEN (GROUNDED KNOWLEDGE BASE):\n';
 
+  // 1. Silabus & Rangkuman Topik Ringkas (Sangat hemat token)
   if (knowledgeBaseContext && knowledgeBaseContext.length > 0) {
-    const compactKb = knowledgeBaseContext.slice(0, 8).map(k => ({
-      title: k.title,
-      sourceCitation: k.sourceCitation,
-      keyConcepts: (k.keyConcepts || []).slice(0, 4)
-    }));
-    out += `\n--- SILABUS & TOPIK UTAMA ---\n${JSON.stringify(compactKb, null, 1)}\n`;
+    out += '--- TOPIK & SUBTOPIK UTAMA ---\n';
+    knowledgeBaseContext.slice(0, 5).forEach((k, i) => {
+      const concepts = Array.isArray(k.keyConcepts) ? k.keyConcepts.slice(0, 3).join(', ') : '';
+      out += `• ${k.title} [${k.sourceCitation || 'Sumber Dosen'}] (${concepts})\n`;
+    });
+    out += '\n';
   }
 
-  const queryTerms = (query || '').toLowerCase().match(/[\w]{3,}/g) || [];
+  const cleanQuery = (query || '').toLowerCase();
+  const queryTerms = cleanQuery.match(/[\w]{3,}/g) || [];
+
+  // Deteksi pencarian lokasi spesifik (misal: "halaman 5", "hal. 12", "slide 8", "02:15")
+  const pageMatch = cleanQuery.match(/(?:hal(?:aman)?\.?|page)\s*(\d+)/i);
+  const slideMatch = cleanQuery.match(/slide\s*(\d+)/i);
+  const videoMatch = cleanQuery.match(/(\d{1,2}:\d{2})/);
+  const targetPageNum = pageMatch ? pageMatch[1] : null;
+  const targetSlideNum = slideMatch ? slideMatch[1] : null;
+  const targetTimestamp = videoMatch ? videoMatch[1] : null;
+
+  const isBroadSummary = /rangkum|ringkas|keseluruhan|semua bab|silabus|overview|garis besar|apa saja/i.test(cleanQuery);
 
   if (Array.isArray(documentExcerpts) && documentExcerpts.length > 0) {
+    // 2. Scoring & Ranking Potongan (Chunks) di seluruh halaman/slide/timestamp
     const scoredExcerpts = documentExcerpts.map((item, idx) => {
       let score = 0;
       const text = (item.content || '').toLowerCase();
+      const loc = (item.loc || '').toLowerCase();
+      const ref = (item.ref || '').toLowerCase();
+
+      // Skor kecocokan lokasi eksplisit
+      if (targetPageNum && loc.includes(targetPageNum)) score += 20;
+      if (targetSlideNum && loc.includes(targetSlideNum)) score += 20;
+      if (targetTimestamp && (loc.includes(targetTimestamp) || text.includes(targetTimestamp))) score += 20;
+
+      // Skor kecocokan kata kunci
       queryTerms.forEach(term => {
         if (text.includes(term)) score += 3;
+        if (loc.includes(term) || ref.includes(term)) score += 4;
       });
-      if (idx < 2) score += 1; // Prioritas bab pengantar
+
+      // Jika pertanyaan umum, ambil representatif dari awal, tengah, dan akhir berkas
+      if (isBroadSummary) {
+        const total = documentExcerpts.length;
+        if (idx === 0 || idx === Math.floor(total / 2) || idx === total - 1) {
+          score += 5;
+        }
+      }
+
       return { item, score, idx };
     });
 
+    // Urutkan potongan dari yang paling relevan
     scoredExcerpts.sort((a, b) => b.score - a.score);
 
-    out += `\n--- KUTIPAN BER-SITASI RELEVAN (HALAMAN / SLIDE / VIDEO) ---\n`;
-    let currentLen = 0;
+    out += '--- KUTIPAN BER-SITASI PALING RELEVAN (RAG CHUNKS) ---\n';
+    let currentLen = out.length;
+    let addedCount = 0;
+
     for (const { item } of scoredExcerpts) {
-      const entry = `[${item.ref || 'Rujukan'}] (${item.loc}):\n${(item.content || '').trim()}\n\n`;
-      if (currentLen + entry.length > maxChars * 0.75) break;
+      if (addedCount >= 5) break; // Maksimal 5 potongan paling penting
+      const textChunk = (item.content || '').trim().slice(0, 320);
+      const entry = `[${item.ref || 'Rujukan'}] (${item.loc}):\n"${textChunk}"\n\n`;
+      if (currentLen + entry.length > maxChars) break;
       out += entry;
       currentLen += entry.length;
+      addedCount++;
     }
   }
 
+  // Jika masih ada ruang dan ada teks dokumen inti
   const remaining = maxChars - out.length;
-  if (remaining > 600 && fullDocumentContent) {
-    out += `\n--- TEKS INTI BERKAS RESMI ---\n${fullDocumentContent.slice(0, remaining)}\n`;
+  if (remaining > 350 && fullDocumentContent) {
+    // Strided sampling: ambil intisari awal dan tengah jika ruang tersisa
+    const snippet = fullDocumentContent.trim().slice(0, remaining);
+    out += `--- INTI BERKAS RESMI ---\n"${snippet}"\n`;
   }
 
-  return out;
+  return out.trim();
 }
 
 // Generator Fallback Ingestion Terstruktur jika API Key / Kuota Groq tidak tersedia
@@ -343,9 +385,21 @@ export async function handleGroqIngestion(body, apiKey) {
     effectiveCourseTitle = fallbackCleanTitle || 'Materi Pembelajaran Terpadu';
   }
 
-  const textSnippet = extractedTextSample && extractedTextSample.length > 20
-    ? `\nKUTIPAN DAN TEKS ASLI LENGKAP DARI SELURUH BERKAS (HALAMAN AWAL HINGGA AKHIR):\n"""\n${extractedTextSample.slice(0, 7000)}\n"""\n`
-    : `\nNama berkas ini adalah: "${fileName}". Analisis dan tentukan disiplin ilmu serta topik materi berdasarkan nama berkas ini secara otonom.\n`;
+  let textSnippet = '';
+  if (extractedTextSample && extractedTextSample.length > 20) {
+    if (extractedTextSample.length > 2400) {
+      const partLen = 700;
+      const head = extractedTextSample.slice(0, partLen);
+      const midStart = Math.max(0, Math.floor(extractedTextSample.length / 2) - Math.floor(partLen / 2));
+      const mid = extractedTextSample.slice(midStart, midStart + partLen);
+      const tail = extractedTextSample.slice(-partLen);
+      textSnippet = `\nCUPLIKAN MULTI-SEKSI RESMI DOKUMEN (AWAL, TENGAH, AKHIR BERKAS):\n[Awal Dokumen / Pendahuluan]:\n${head}\n\n[Tengah Dokumen / Konsep Utama]:\n${mid}\n\n[Akhir Dokumen / Evaluasi-Lanjutan]:\n${tail}\n`;
+    } else {
+      textSnippet = `\nKUTIPAN DAN TEKS ASLI LENGKAP DARI BERKAS:\n"""\n${extractedTextSample}\n"""\n`;
+    }
+  } else {
+    textSnippet = `\nNama berkas ini adalah: "${fileName}". Analisis dan tentukan disiplin ilmu serta topik materi berdasarkan nama berkas ini secara otonom.\n`;
+  }
 
   let exampleCitation1 = '';
   let exampleCitation2 = '';
@@ -486,7 +540,7 @@ KEMBALIKAN HANYA FORMAT RAW JSON STRICT TANPA MARKDOWN BACKTICKS (STRICT JSON ON
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const tokenLimit = model.includes('qwen') ? 850 : 1200;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -512,6 +566,9 @@ KEMBALIKAN HANYA FORMAT RAW JSON STRICT TANPA MARKDOWN BACKTICKS (STRICT JSON ON
 
         if (!response.ok) {
           const errText = await response.text();
+          if (response.status === 413 || response.status === 429) {
+            console.warn(`[Groq Ingestion ${response.status}] Limit tercapai pada ${model} (${keyLabel}). Mencoba failover.`);
+          }
           throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
         }
 
@@ -689,37 +746,26 @@ ATURAN WAJIB IDENTIFIKASI & SITASI MULTI-BERKAS:
     documentExcerpts,
     fullDocumentContent,
     query: question,
-    maxChars: 5000
+    maxChars: 1800
   });
 
   const systemPrompt = `Anda adalah OmniTutor AI, asisten belajar multimodal akademik untuk kompetisi Multimodal AI Hackathon 2026 (Track D: Personalized Tutoring & Adaptive Learning).
-Prinsip Operasional Wajib (Track D Requirement 2.a & 2.b):
-1. PEMERIKSAAN KONTEN SELURUH BERKAS (FULL-DOCUMENT GROUNDING):
-   - Anda memiliki akses ke materi perkuliahan resmi yang diunggah Dosen di atas, mulai dari konsep pengantar hingga penerapan rumus.
-   - JANGAN PERNAH menolak pertanyaan jika konsep, istilah, materi, atau rumus tersebut tercantum di dalam materi yang diunggah dosen!
-   - Periksa seluruh teks materi secara cermat sebelum menjawab.
-
-2. SITASI SUMBER EKSPLISIT DAN AKURAT (Req 2.a):
+Prinsip Operasional Wajib (Track D Req 2.a & 2.b):
+1. FULL-DOCUMENT GROUNDING: Jawab pertanyaan mahasiswa HANYA berdasarkan materi perkuliahan resmi di bawah. Jika materi ada dalam dokumen, jelaskan secara tuntas dan ramah!
+2. SITASI SUMBER EKSPLISIT:
 ${mediaSpecificGuideline}
+3. FORMULA MATEMATIKA: Tulis rumus menggunakan LaTeX standar: $$ rumus $$ untuk blok, $ simbol $ untuk inline (contoh $\\vec{F}$, $\\mathbf{A}$).
+4. REFUSAL GUARDRAIL: Tolak secara sopan HANYA jika mahasiswa menanyakan hal yang sama sekali di luar topik perkuliahan resmi (resep makanan, ramalan, gosip).
+5. Nada: Ramah, akademis, mendidik, terstruktur, dan ilmiah.
 
-3. FORMULASI MATEMATIKA & RUMUS LENGKAP (LaTeX STANDAR):
-   - Tuliskan semua rumus dan simbol matematika/fisika/teknik dalam format LaTeX standar:
-     Gunakan $$ rumus $$ untuk rumus blok utama baris baru.
-     Gunakan $ simbol $ untuk simbol matematika inline dalam kalimat (misal: $\\vec{A}$, $\\mathbf{A}$, $\\nabla$, $\\theta$).
-   - JANGAN memotong rumus di tengah kalimat. Tuliskan rumus sampai tuntas lengkap.
-
-4. GUARDRAIL & REFUSAL (HANYA UNTUK TOPIK YANG BENAR-BENAR DI LUAR MATERI KULIAH):
-   - Tolak secara sopan HANYA JIKA mahasiswa menanyakan hal yang sama sekali di luar materi kuliah resmi yang diunggah (misal berita selebriti, ramalan cuaca, resep masakan, hal di luar mata kuliah).
-   - Format penolakan guardrail:
-     "Maaf, pertanyaan ini berada di luar materi kuliah resmi yang diunggah oleh Dosen. OmniTutor AI menerapkan guardrail ketat anti-halusinasi agar penjelasan 100% dapat diverifikasi ke sumber materi resmi."
-   - Namun JIKA pertanyaan berkaitan dengan materi kuliah yang diunggah, Anda WAJIB menjawabnya secara lengkap dan ramah!
-
-5. Nada bicara: Ramah, akademis, mendidik, terstruktur, dan ilmiah.
 ${contextStr}`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...(history || []).slice(-4).map(m => ({ role: m.role || 'user', content: m.text || m.content })),
+    ...(history || []).slice(-2).map(m => ({
+      role: m.role || 'user',
+      content: String(m.text || m.content || '').slice(0, 300)
+    })),
     { role: 'user', content: question }
   ];
 
@@ -756,7 +802,7 @@ ${contextStr}`;
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const tokenLimit = model.includes('qwen') ? 800 : 1000;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -773,10 +819,12 @@ ${contextStr}`;
 
         if (!response.ok) {
           const errText = await response.text();
-          // Jika status 413 (Payload too large) atau 429, kurangi ukuran konteks secara otomatis
-          if (response.status === 413 && messages[0]?.content && messages[0].content.length > 2200) {
-            console.warn(`[Groq 413 Auto-Shrink] Mengompres konteks tutor untuk ${model} (${keyLabel})...`);
-            messages[0].content = messages[0].content.slice(0, 1800) + '\n[Konteks diringkas otomatis agar sesuai limit Groq Cloud]\n';
+          // Jika status 413 (Payload too large) atau 429, kurangi ukuran konteks secara agresif
+          if (response.status === 413 || response.status === 429) {
+            console.warn(`[Groq ${response.status} Auto-Shrink] Mengompres konteks tutor untuk ${model} (${keyLabel})...`);
+            if (messages[0]?.content && messages[0].content.length > 900) {
+              messages[0].content = messages[0].content.slice(0, 850) + '\n[Grounded Summary]\n';
+            }
           }
           throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
         }
@@ -1142,7 +1190,7 @@ export async function handleGroqQuizGeneration(body, apiKey) {
       documentExcerpts,
       fullDocumentContent,
       query: targetTopicList.join(' '),
-      maxChars: 4500
+      maxChars: 1800
     });
 
   let mediaSpecificPromptGuideline = '';
@@ -1263,7 +1311,7 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 1100 : 3000;
+        const tokenLimit = model.includes('qwen') ? 850 : 1200;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -1289,6 +1337,9 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
 
         if (!response.ok) {
           const errText = await response.text();
+          if (response.status === 413 || response.status === 429) {
+            console.warn(`[Groq Quiz ${response.status}] Limit tercapai pada ${model} (${keyLabel}). Mencoba failover.`);
+          }
           throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
         }
 

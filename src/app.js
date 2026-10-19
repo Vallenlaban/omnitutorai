@@ -5100,10 +5100,10 @@ function renderLearnView() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               question: text,
-              history: tutorChatHistory.slice(-4),
+              history: tutorChatHistory.slice(-2),
               knowledgeBaseContext: knowledgeContext,
-              documentExcerpts: documentExcerpts.slice(0, 30),
-              fullDocumentContent: fullDocContent.slice(0, 8000),
+              documentExcerpts: documentExcerpts.slice(0, 15),
+              fullDocumentContent: fullDocContent.slice(0, 2000),
               currentSubject: courseKnowledgeBase.length > 0 ? courseKnowledgeBase[0].title : 'Materi Kuliah Terpadu',
               uploadedFilesSummary: (ingestedFilesRegistry || []).map(f => ({ name: f.name, type: f.type, volume: f.volume, volumeLabel: f.volumeLabel }))
             })
