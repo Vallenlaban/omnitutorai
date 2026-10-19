@@ -5109,11 +5109,17 @@ function renderLearnView() {
             })
           });
 
-          const resData = await response.json();
+          let resData = null;
+          try {
+            resData = await response.json();
+          } catch (jsonErr) {
+            resData = null;
+          }
           loadingRow.remove();
 
-          if (!resData.success) {
-            throw new Error(resData.error || 'Gagal memproses jawaban dari Groq.');
+          if (!response.ok || !resData || !resData.success) {
+            const errorMsg = resData?.error || `Tutor API mengembalikan status ${response.status}: ${response.statusText || 'Internal Server Error'}`;
+            throw new Error(errorMsg);
           }
 
           const replyText = resData.reply || 'Maaf, tidak dapat menghasilkan jawaban.';

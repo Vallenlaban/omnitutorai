@@ -141,7 +141,7 @@ function extractGroqKeys(apiKeysInput) {
   } else if (typeof apiKeysInput === 'string' && apiKeysInput.trim().length > 0) {
     keys = apiKeysInput.split(',').map(k => k.trim()).filter(Boolean);
   }
-  return [...new Set(keys)];
+  return [...new Set(keys.map(k => k.trim().replace(/^["']|["']$/g, '')).filter(Boolean))];
 }
 
 // Helper cerdas pemilihan konteks berbobot relevansi kata kunci dengan batas aman token Groq (TPM-Safe)
@@ -357,8 +357,8 @@ KEMBALIKAN HANYA FORMAT RAW JSON STRICT TANPA MARKDOWN BACKTICKS (STRICT JSON ON
   }
 
   const modelsToTry = [
-    'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
+    'openai/gpt-oss-120b',
     'qwen/qwen3.8-27b'
   ];
   let lastError = null;
@@ -599,8 +599,8 @@ ${contextStr}`;
   }
 
   const modelsToTry = [
-    'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
+    'openai/gpt-oss-120b',
     'qwen/qwen3.8-27b'
   ];
   let lastError = null;
@@ -970,8 +970,8 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
 
   const availableKeys = extractGroqKeys(apiKey);
   const modelsToTry = [
-    'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
+    'openai/gpt-oss-120b',
     'qwen/qwen3.8-27b'
   ];
   let lastError = null;

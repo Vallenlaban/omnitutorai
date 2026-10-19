@@ -25,7 +25,7 @@ const GROQ_API_KEYS = [
   process.env.GROQ_API_KEY_2,
   process.env.GROQ_API_KEY_SECONDARY,
   ...(process.env.GROQ_API_KEYS ? process.env.GROQ_API_KEYS.split(',') : [])
-].map(k => (k || '').trim()).filter(Boolean);
+].map(k => (k || '').trim().replace(/^["']|["']$/g, '')).filter(Boolean);
 
 // Content-Type mapping for static assets
 const MIME_TYPES = {
