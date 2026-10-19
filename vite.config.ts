@@ -1,19 +1,22 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 // @ts-ignore
-import { handleGroqIngestion, handleGroqTutorChat, handleGroqQuizGeneration, handleGroqAudioTranscription } from './server/groq-handler.js';
+import { handleGroqIngestion, handleGroqTutorChat, handleGroqQuizGeneration, handleGroqAudioTranscription, extractGroqKeys } from './server/groq-handler.js';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const GROQ_API_KEYS = [
+  const GROQ_API_KEYS = extractGroqKeys([
     env.GROQ_API_KEY,
+    env.GROQ_API_KEY_1,
     env.GROQ_API_KEY_2,
     env.GROQ_API_KEY_SECONDARY,
+    env.GROQ_API_KEYS,
     process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_1,
     process.env.GROQ_API_KEY_2,
     process.env.GROQ_API_KEY_SECONDARY,
-    ...((env.GROQ_API_KEYS || process.env.GROQ_API_KEYS || '').split(','))
-  ].map(k => (k || '').trim()).filter(Boolean);
+    process.env.GROQ_API_KEYS
+  ]);
 
   return {
     server: {

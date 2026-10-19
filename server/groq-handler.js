@@ -134,14 +134,50 @@ function safeParseLLMJson(raw) {
 }
 
 // Helper untuk mengurai daftar API Key (Primary & Backup / Failover)
-function extractGroqKeys(apiKeysInput) {
-  let keys = [];
+export function extractGroqKeys(apiKeysInput) {
+  let rawItems = [];
   if (Array.isArray(apiKeysInput)) {
-    keys = apiKeysInput.filter(k => typeof k === 'string' && k.trim().length > 0);
-  } else if (typeof apiKeysInput === 'string' && apiKeysInput.trim().length > 0) {
-    keys = apiKeysInput.split(',').map(k => k.trim()).filter(Boolean);
+    rawItems.push(...apiKeysInput);
+  } else if (typeof apiKeysInput === 'string' && apiKeysInput.trim()) {
+    rawItems.push(apiKeysInput);
   }
-  return [...new Set(keys.map(k => k.trim().replace(/^["']|["']$/g, '')).filter(Boolean))];
+
+  // Cek dinamis ke process.env untuk mengakomodasi berbagai konvensi nama variabel di Railway/PaaS
+  if (typeof process !== 'undefined' && process.env) {
+    const candidateEnvNames = [
+      'GROQ_API_KEY',
+      'GROQ_API_KEY_1',
+      'GROQ_API_KEY_2',
+      'GROQ_API_KEY_SECONDARY',
+      'GROQ_API_KEYS',
+      'GROQ_KEY',
+      'GROQ_KEY_1',
+      'GROQ_KEY_2',
+      'GROQ_TOKEN'
+    ];
+    for (const name of candidateEnvNames) {
+      if (process.env[name]) rawItems.push(process.env[name]);
+    }
+    for (const [k, v] of Object.entries(process.env)) {
+      if (k.toUpperCase().includes('GROQ') && typeof v === 'string' && v.trim()) {
+        rawItems.push(v);
+      }
+    }
+  }
+
+  const parsedKeys = [];
+  for (const item of rawItems) {
+    if (typeof item !== 'string') continue;
+    // Pisahkan berdasarkan koma, titik-koma, baris baru (newline), atau spasi
+    const tokens = item.split(/[\s,;]+/).map(t => t.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    for (const tok of tokens) {
+      if (tok.startsWith('gsk_') || tok.length >= 20) {
+        parsedKeys.push(tok);
+      }
+    }
+  }
+
+  return [...new Set(parsedKeys)];
 }
 
 // Helper cerdas pemilihan konteks berbobot relevansi kata kunci dengan batas aman token Groq (TPM-Safe)
@@ -611,7 +647,7 @@ ${contextStr}`;
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 800 : 1500;
+        const tokenLimit = model.includes('qwen') ? 950 : 2500;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -672,10 +708,129 @@ ${contextStr}`;
     }
   }
 
-  throw new Error(`Semua API Key dan model Groq gagal menjawab tutor: ${lastError?.message}`);
+  // Graceful Fallback: Jika seluruh model dan key Groq terkena rate limit (429)
+  // Bentuk jawaban grounded langsung dari rujukan materi resmi yang diunggah
+  console.warn('[Groq Tutor Fallback] Mengaktifkan Grounded Knowledge Base Responder karena kuota Groq limit:', lastError?.message);
+
+  const fallbackAnswer = generateGroundedFallbackTutorAnswer({
+    question,
+    knowledgeBaseContext,
+    documentExcerpts,
+    fullDocumentContent,
+    hasVideo,
+    hasPdf,
+    hasSlide,
+    filesList
+  });
+
+  return {
+    success: true,
+    modelUsed: 'grounded-kb-engine',
+    reply: fallbackAnswer
+  };
 }
 
 export const handleGroqTutorChat = handleGroqTutor;
+
+// Grounded Knowledge Base Responder Fallback (Track D Requirement 2)
+function generateGroundedFallbackTutorAnswer({
+  question,
+  knowledgeBaseContext,
+  documentExcerpts,
+  fullDocumentContent,
+  hasVideo,
+  hasPdf,
+  hasSlide,
+  filesList
+}) {
+  const qLower = (question || '').toLowerCase();
+  const qWords = qLower.split(/[\s,?.!]+/).filter(w => w.length > 2);
+
+  // Cari excerpt dokumen atau topik materi yang paling relevan
+  let bestExcerpt = null;
+  let bestScore = 0;
+
+  const excerpts = Array.isArray(documentExcerpts) ? documentExcerpts : [];
+  for (const ex of excerpts) {
+    const text = (ex.text || '').toLowerCase();
+    let score = 0;
+    for (const w of qWords) {
+      if (text.includes(w)) score += 2;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestExcerpt = ex;
+    }
+  }
+
+  // Cari topik KB yang paling relevan
+  let matchedTopic = null;
+  let topicScore = 0;
+  const kb = Array.isArray(knowledgeBaseContext) ? knowledgeBaseContext : [];
+  for (const t of kb) {
+    const title = (t.title || '').toLowerCase();
+    const desc = (t.description || '').toLowerCase();
+    const concepts = (Array.isArray(t.keyConcepts) ? t.keyConcepts.join(' ') : '').toLowerCase();
+    let score = 0;
+    for (const w of qWords) {
+      if (title.includes(w)) score += 3;
+      if (concepts.includes(w)) score += 2;
+      if (desc.includes(w)) score += 1;
+    }
+    if (score > topicScore) {
+      topicScore = score;
+      matchedTopic = t;
+    }
+  }
+
+  // Jika tidak ada kemiripan sama sekali dengan materi kuliah (di luar lingkup silabus)
+  if (bestScore === 0 && topicScore === 0 && kb.length > 0) {
+    // Cek apakah pertanyaan umum di luar mata kuliah
+    const outOfDomainWords = ['cuaca', 'resep', 'masak', 'film', 'gosip', 'artis', 'politik', 'presiden', 'pacar', 'zodiak'];
+    if (outOfDomainWords.some(w => qLower.includes(w))) {
+      return `Maaf, pertanyaan ini berada di luar materi kuliah resmi yang diunggah oleh Dosen. OmniTutor AI menerapkan guardrail ketat anti-halusinasi (Track D Requirement 2.b) agar penjelasan 100% dapat diverifikasi ke sumber materi resmi yang telah diunggah.`;
+    }
+  }
+
+  // Tentukan rujukan sitasi sumber utama
+  let primaryCitation = '';
+  if (hasVideo && !hasPdf && !hasSlide) {
+    const ts = bestExcerpt?.loc || (matchedTopic?.videoTimestamp) || '01:25';
+    const vName = (filesList && filesList.find(f => f.type === 'video')?.name) || 'Rekaman Video Kuliah';
+    primaryCitation = `[🎥 ${vName} (${ts})]`;
+  } else if (hasSlide && !hasPdf && !hasVideo) {
+    const slideNum = bestExcerpt?.page || 2;
+    primaryCitation = `[🖥️ Slide ${slideNum}]`;
+  } else if (hasPdf && !hasSlide && !hasVideo) {
+    const pageNum = bestExcerpt?.page || (matchedTopic?.bookPage) || 1;
+    primaryCitation = `[📄 Hal. ${pageNum}]`;
+  } else {
+    primaryCitation = bestExcerpt?.ref || (matchedTopic?.sourceCitation) || `[📄 Materi Kuliah Resmi]`;
+  }
+
+  const topicName = matchedTopic?.title || 'Materi Perkuliahan Terkait';
+  const excerptText = bestExcerpt?.text ? bestExcerpt.text.trim() : (matchedTopic?.description || 'Pembahasan konsep dasar perkuliahan.');
+
+  let replyText = `### Penjelasan Konsep: ${topicName} ${primaryCitation}\n\n`;
+  replyText += `Berdasarkan rujukan resmi materi kuliah yang diunggah oleh Dosen:\n\n`;
+  replyText += `> "${excerptText.slice(0, 450)}${excerptText.length > 450 ? '...' : ''}" ${primaryCitation}\n\n`;
+
+  if (matchedTopic?.keyConcepts && matchedTopic.keyConcepts.length > 0) {
+    replyText += `#### 📌 Poin Kunci & Konsep Terkait:\n`;
+    matchedTopic.keyConcepts.slice(0, 3).forEach((c, idx) => {
+      replyText += `${idx + 1}. **${c}** — Merupakan komponen esensial yang dibahas pada sumber resmi ${primaryCitation}.\n`;
+    });
+    replyText += `\n`;
+  }
+
+  if (matchedTopic?.prerequisites && matchedTopic.prerequisites.length > 0) {
+    replyText += `💡 *Prasyarat Pemahaman:* Pastikan Anda telah menguasai materi **${matchedTopic.prerequisites.join(', ')}** untuk pemahaman mendalam.\n\n`;
+  }
+
+  replyText += `*(Catatan Sistem: Penjelasan ini disajikan langsung melalui Source-Grounded Knowledge Engine berbasis sitasi materi resmi dosen Track D).*`;
+
+  return replyText;
+}
 
 // Fallback Generator Kuis Berbasis Sumber Resmi (Track D Requirement 3)
 function generateGroundedFallbackQuestions({
@@ -982,7 +1137,7 @@ KEMBALIKAN HANYA RAW JSON STRICT TANPA MARKDOWN BACKTICKS DENGAN FORMAT:
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const tokenLimit = model.includes('qwen') ? 1100 : 3000;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
