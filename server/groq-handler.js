@@ -144,6 +144,52 @@ function extractGroqKeys(apiKeysInput) {
   return [...new Set(keys)];
 }
 
+// Helper cerdas pemilihan konteks berbobot relevansi kata kunci dengan batas aman token Groq (TPM-Safe)
+function selectRelevantContext({ knowledgeBaseContext, documentExcerpts, fullDocumentContent, query = '', maxChars = 5200 }) {
+  let out = '\nBASIS PENGETAHUAN RESMI DOSEN (GROUNDED KNOWLEDGE BASE):\n';
+
+  if (knowledgeBaseContext && knowledgeBaseContext.length > 0) {
+    const compactKb = knowledgeBaseContext.slice(0, 8).map(k => ({
+      title: k.title,
+      sourceCitation: k.sourceCitation,
+      keyConcepts: (k.keyConcepts || []).slice(0, 4)
+    }));
+    out += `\n--- SILABUS & TOPIK UTAMA ---\n${JSON.stringify(compactKb, null, 1)}\n`;
+  }
+
+  const queryTerms = (query || '').toLowerCase().match(/[\w]{3,}/g) || [];
+
+  if (Array.isArray(documentExcerpts) && documentExcerpts.length > 0) {
+    const scoredExcerpts = documentExcerpts.map((item, idx) => {
+      let score = 0;
+      const text = (item.content || '').toLowerCase();
+      queryTerms.forEach(term => {
+        if (text.includes(term)) score += 3;
+      });
+      if (idx < 2) score += 1; // Prioritas bab pengantar
+      return { item, score, idx };
+    });
+
+    scoredExcerpts.sort((a, b) => b.score - a.score);
+
+    out += `\n--- KUTIPAN BER-SITASI RELEVAN (HALAMAN / SLIDE / VIDEO) ---\n`;
+    let currentLen = 0;
+    for (const { item } of scoredExcerpts) {
+      const entry = `[${item.ref || 'Rujukan'}] (${item.loc}):\n${(item.content || '').trim()}\n\n`;
+      if (currentLen + entry.length > maxChars * 0.75) break;
+      out += entry;
+      currentLen += entry.length;
+    }
+  }
+
+  const remaining = maxChars - out.length;
+  if (remaining > 600 && fullDocumentContent) {
+    out += `\n--- TEKS INTI BERKAS RESMI ---\n${fullDocumentContent.slice(0, remaining)}\n`;
+  }
+
+  return out;
+}
+
 export async function handleGroqIngestion(body, apiKey) {
   const {
     fileName,
@@ -196,7 +242,7 @@ export async function handleGroqIngestion(body, apiKey) {
   }
 
   const textSnippet = extractedTextSample && extractedTextSample.length > 20
-    ? `\nKUTIPAN DAN TEKS ASLI LENGKAP DARI SELURUH BERKAS (HALAMAN AWAL HINGGA AKHIR):\n"""\n${extractedTextSample.slice(0, 18000)}\n"""\n`
+    ? `\nKUTIPAN DAN TEKS ASLI LENGKAP DARI SELURUH BERKAS (HALAMAN AWAL HINGGA AKHIR):\n"""\n${extractedTextSample.slice(0, 7000)}\n"""\n`
     : `\nNama berkas ini adalah: "${fileName}". Analisis dan tentukan disiplin ilmu serta topik materi berdasarkan nama berkas ini secara otonom.\n`;
 
   let exampleCitation1 = '';
@@ -508,26 +554,20 @@ ATURAN WAJIB IDENTIFIKASI & SITASI MULTI-BERKAS:
 ========================================================================`;
   }
 
-  let contextStr = `\nBASIS PENGETAHUAN RESMI DOSEN (GROUNDED KNOWLEDGE BASE DARI BERKAS YANG DIUNGGAH):\n`;
-  if (knowledgeBaseContext && knowledgeBaseContext.length > 0) {
-    contextStr += `\n--- DAFTAR TOPIK, SUBTOPIK & BAB MATERI TERPETAKAN ---\n${JSON.stringify(knowledgeBaseContext, null, 2)}\n`;
-  }
-  if (documentExcerpts && documentExcerpts.length > 0) {
-    contextStr += `\n--- KONTEN RINCI DOKUMEN PER HALAMAN / SLIDE / VIDEO (MENCATAT SETIAP HALAMAN/DURASI DARI AWAL SAMPAI AKHIR) ---\n`;
-    documentExcerpts.forEach((item) => {
-      contextStr += `[${item.ref || 'Rujukan'}] (${item.loc}):\n${item.content}\n\n`;
-    });
-  }
-  if (fullDocumentContent) {
-    contextStr += `\n--- TEKS LENGKAP & TRANSKRIP REKAMAN SEMUA BERKAS RESMI DOSEN ---\n${fullDocumentContent.slice(0, 18000)}\n`;
-  }
+  const contextStr = selectRelevantContext({
+    knowledgeBaseContext,
+    documentExcerpts,
+    fullDocumentContent,
+    query: question,
+    maxChars: 5000
+  });
 
   const systemPrompt = `Anda adalah OmniTutor AI, asisten belajar multimodal akademik untuk kompetisi Multimodal AI Hackathon 2026 (Track D: Personalized Tutoring & Adaptive Learning).
 Prinsip Operasional Wajib (Track D Requirement 2.a & 2.b):
 1. PEMERIKSAAN KONTEN SELURUH BERKAS (FULL-DOCUMENT GROUNDING):
-   - Anda memiliki akses penuh ke SELURUH materi perkuliahan resmi yang diunggah Dosen di atas, mulai dari bagian awal (konsep pengantar), bagian pertengahan (inti materi & teori), hingga bagian akhir (rumus lanjutan, penerapan, bab penutup, kesimpulan, dan seluruh durasi/halaman akhir).
-   - JANGAN PERNAH menolak pertanyaan jika konsep, istilah, materi, atau rumus tersebut tercantum di bagian mana pun dari materi yang diunggah dosen!
-   - Periksa seluruh teks materi secara cermat sebelum menjawab. Jika mahasiswa menanyakan rumus, bab akhir, menit akhir, atau konsep tertentu, cari di seluruh materi dan jawab secara komprehensif.
+   - Anda memiliki akses ke materi perkuliahan resmi yang diunggah Dosen di atas, mulai dari konsep pengantar hingga penerapan rumus.
+   - JANGAN PERNAH menolak pertanyaan jika konsep, istilah, materi, atau rumus tersebut tercantum di dalam materi yang diunggah dosen!
+   - Periksa seluruh teks materi secara cermat sebelum menjawab.
 
 2. SITASI SUMBER EKSPLISIT DAN AKURAT (Req 2.a):
 ${mediaSpecificGuideline}
@@ -571,7 +611,7 @@ ${contextStr}`;
 
     for (const model of modelsToTry) {
       try {
-        const tokenLimit = model.includes('qwen') ? 950 : 2500;
+        const tokenLimit = model.includes('qwen') ? 800 : 1500;
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -588,6 +628,11 @@ ${contextStr}`;
 
         if (!response.ok) {
           const errText = await response.text();
+          // Jika status 413 (Payload too large) atau 429, kurangi ukuran konteks secara otomatis
+          if (response.status === 413 && messages[0]?.content && messages[0].content.length > 2200) {
+            console.warn(`[Groq 413 Auto-Shrink] Mengompres konteks tutor untuk ${model} (${keyLabel})...`);
+            messages[0].content = messages[0].content.slice(0, 1800) + '\n[Konteks diringkas otomatis agar sesuai limit Groq Cloud]\n';
+          }
           throw new Error(`Groq status ${response.status} (${keyLabel}): ${errText.slice(0, 150)}`);
         }
 
@@ -827,19 +872,14 @@ export async function handleGroqQuizGeneration(body, apiKey) {
     targetTopicList = [targetRemedialTopic];
   }
 
-  let groundingContext = `KURSUS: "${courseName}"\nTOPIK TARGET: ${targetTopicList.join(', ')}\n`;
-  if (courseKnowledgeBase && courseKnowledgeBase.length > 0) {
-    groundingContext += `\n--- SILABUS & TOPIK MATERI RESMI ---\n${JSON.stringify(courseKnowledgeBase.slice(0, 10), null, 2)}\n`;
-  }
-  if (documentExcerpts && documentExcerpts.length > 0) {
-    groundingContext += `\n--- KUTIPAN RESMI HALAMAN DOKUMEN / SLIDE / SEGMEN VIDEO ---\n`;
-    documentExcerpts.slice(0, 80).forEach(ex => {
-      groundingContext += `[${ex.ref || 'Rujukan'} Loc:${ex.loc}]: ${ex.content}\n\n`;
+  const groundingContext = `KURSUS: "${courseName}"\nTOPIK TARGET: ${targetTopicList.join(', ')}\n` +
+    selectRelevantContext({
+      knowledgeBaseContext: courseKnowledgeBase,
+      documentExcerpts,
+      fullDocumentContent,
+      query: targetTopicList.join(' '),
+      maxChars: 4500
     });
-  }
-  if (fullDocumentContent) {
-    groundingContext += `\n--- TRANSKRIP REKAMAN LENGKAP & TEKS SEMUA BERKAS RESMI DOSEN (DARI AWAL HINGGA DURASI AKHIR) ---\n${fullDocumentContent.slice(0, 18000)}\n`;
-  }
 
   let mediaSpecificPromptGuideline = '';
   if (hasVideo && !hasPdf && !hasSlide) {

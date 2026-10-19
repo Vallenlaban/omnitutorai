@@ -5102,8 +5102,8 @@ function renderLearnView() {
               question: text,
               history: tutorChatHistory.slice(-4),
               knowledgeBaseContext: knowledgeContext,
-              documentExcerpts: documentExcerpts.slice(0, 160),
-              fullDocumentContent: fullDocContent,
+              documentExcerpts: documentExcerpts.slice(0, 30),
+              fullDocumentContent: fullDocContent.slice(0, 8000),
               currentSubject: courseKnowledgeBase.length > 0 ? courseKnowledgeBase[0].title : 'Materi Kuliah Terpadu',
               uploadedFilesSummary: (ingestedFilesRegistry || []).map(f => ({ name: f.name, type: f.type, volume: f.volume, volumeLabel: f.volumeLabel }))
             })
