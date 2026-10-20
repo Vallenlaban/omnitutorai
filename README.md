@@ -98,7 +98,7 @@ All system architecture, prompt engineering, integration logic, and testing were
 
 ## 6. Demo Video
 
-- **YouTube Demo Link:** [Insert your YouTube Video Link here]
+- **YouTube Demo Link:** [Insert your YouTube Video Link here]  
   *(3 to 10 minutes duration, showing the live project running with English voiceover or English subtitles)*
 
 ---

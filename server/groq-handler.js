@@ -851,7 +851,7 @@ ${contextStr}`;
             .replace(/\(hal\.?\s*\d+(?:\s*-\s*\d+)?\)/gi, '')
             .replace(/pada slide\s*\d+/gi, 'pada rekaman video');
         }
-
+        
         return {
           success: true,
           modelUsed: model,
@@ -1582,3 +1582,5 @@ export async function handleGroqAudioTranscription(fileBuffer, fileName, mimeTyp
 
   throw new Error(`Semua API Key Groq gagal mentranskripsi audio: ${lastError?.message}`);
 }
+
+
