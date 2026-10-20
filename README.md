@@ -38,8 +38,9 @@ Students often study from multiple disconnected materials: long lecture recordin
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/omnitutor-ai.git
-   cd omnitutor-ai
+git clone https://github.com/Vallenlaban/omnitutorai.git
+cd omnitutorai
+
    ```
 
 2. **Install dependencies:**
@@ -98,13 +99,12 @@ All system architecture, prompt engineering, integration logic, and testing were
 
 ## 6. Demo Video
 
-- **YouTube Demo Link:** [Insert your YouTube Video Link here]  
-  *(3 to 10 minutes duration, showing the live project running with English voiceover or English subtitles)*
+- **YouTube Demo Link:** [https://youtu.be/kgkXxBvNKas?si=ldIoqOYRsA9WuY4V]  
 
 ---
 
 ## 7. Team Information
 
-- **Name:** Vallen Laban Silaban
+- **Name:** Vallen Salovadore Silaban
 - **Devpost Username:** @vallenlabansilaban
 - **Role:** Developer (Solo Participation)
